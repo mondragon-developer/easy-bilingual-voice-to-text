@@ -1,0 +1,47 @@
+# Automatic releases: push a tag like v2.0.0 and this workflow tests the
+# code, builds both Windows zips, and publishes a GitHub Release with the
+# zips attached. Update RELEASE_NOTES.md before tagging.
+#
+#   git tag v2.0.1
+#   git push origin v2.0.1
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      # UI tests (tests/test_app.py) need an interactive desktop and run
+      # locally; CI runs the logic suite.
+      - run: python -m pytest tests --ignore tests/test_app.py -q
+
+  build-and-release:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # Lockfile = releases are built from exact, recorded versions.
+      - run: pip install -r requirements-lock.txt
+      - run: pip install pyinstaller
+      - run: powershell -ExecutionPolicy Bypass -File scripts/build_release.ps1
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          files: |
+            release/SpeechToText-Windows-GPU.zip
+            release/SpeechToText-Windows-CPU.zip

@@ -1,5 +1,8 @@
 # Speech to Text — EN / ES
 
+![Tests](https://github.com/mondragon-developer/easy-bilingual-voice-to-text/actions/workflows/ci.yml/badge.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+
 Dictate in **English or Spanish** — the app auto-detects the language,
 transcribes it with OpenAI's Whisper model (running **locally on your
 machine**), and shows the text in **both languages** side by side. Both panes
@@ -40,8 +43,8 @@ are fully editable with native copy/cut/paste.
 ### Option B: Run from source
 
 ```bash
-git clone https://github.com/mondragon-developer/speech-to-text-en-es.git
-cd speech-to-text-en-es
+git clone https://github.com/mondragon-developer/easy-bilingual-voice-to-text.git
+cd easy-bilingual-voice-to-text
 pip install -r requirements.txt
 python main.py
 ```
@@ -54,8 +57,8 @@ drivers; otherwise the app automatically uses CPU mode.
 Run from source (a signed/notarized .app download is planned):
 
 ```bash
-git clone https://github.com/mondragon-developer/speech-to-text-en-es.git
-cd speech-to-text-en-es
+git clone https://github.com/mondragon-developer/easy-bilingual-voice-to-text.git
+cd easy-bilingual-voice-to-text
 python3 -m pip install -r requirements.txt
 python3 main.py
 ```
