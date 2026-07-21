@@ -1,0 +1,45 @@
+# Exact versions used to build the official release binaries (v2.0.0).
+# Source installs can use the friendlier ranges in requirements.txt;
+# this file records what actually ships inside the downloadable builds.
+# Rebuild reproducibly with:  pip install -r requirements-lock.txt
+av==18.0.0
+beautifulsoup4==4.14.3
+certifi==2026.1.4
+cffi==2.0.0
+charset-normalizer==3.4.4
+click==8.4.2
+colorama==0.4.6
+coloredlogs==15.0.1
+ctranslate2==4.8.1
+customtkinter==5.2.2
+darkdetect==0.8.0
+deep-translator==1.11.4
+faster-whisper==1.2.1
+filelock==3.20.2
+flatbuffers==25.12.19
+fsspec==2025.12.0
+hf-xet==1.5.2
+huggingface-hub==1.24.0
+humanfriendly==10.0
+idna==3.11
+keyboard==0.13.5
+mpmath==1.3.0
+numpy==2.2.6
+onnxruntime==1.27.0
+packaging==25.0
+protobuf==6.33.2
+pycparser==2.23
+PyYAML==6.0.3
+requests==2.32.5
+sounddevice==0.5.3
+soupsieve==2.8.1
+sympy==1.14.0
+tokenizers==0.23.1
+tqdm==4.67.1
+typing_extensions==4.15.0
+urllib3==2.6.3
+
+# Windows/Linux GPU runtime (bundled only in the GPU build)
+nvidia-cublas-cu12==12.9.2.10; sys_platform != 'darwin'
+nvidia-cudnn-cu12==9.25.0.15; sys_platform != 'darwin'
+nvidia-cuda-nvrtc-cu12==12.9.86; sys_platform != 'darwin'

@@ -1,0 +1,22 @@
+# UI
+customtkinter>=5.2.2
+
+# Speech to text (offline; GPU-accelerated where available)
+faster-whisper>=1.1.0
+
+# Microphone capture
+sounddevice>=0.5.0
+numpy>=1.24
+
+# EN <-> ES translation (Google, free, no API key; only part that needs internet)
+deep-translator>=1.11.4
+
+# System-wide hotkeys (Ctrl+Alt+R records even when the app is not focused).
+# On macOS global hotkeys need elevated permissions; the app runs fine
+# without them (in-app shortcuts still work).
+keyboard>=0.13.5
+
+# CUDA runtime libraries for NVIDIA GPU acceleration (Windows/Linux only;
+# harmless on machines without an NVIDIA card - the app falls back to CPU).
+nvidia-cublas-cu12; sys_platform != 'darwin'
+nvidia-cudnn-cu12>=9; sys_platform != 'darwin'

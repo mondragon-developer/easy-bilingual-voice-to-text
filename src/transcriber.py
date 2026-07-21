@@ -1,0 +1,126 @@
+"""Speech-to-text via faster-whisper with automatic EN/ES language detection.
+
+Loads the model onto the GPU (CUDA / float16) when available and falls back
+to CPU (int8) automatically. Whisper's output is already punctuated and
+correctly spelled, which is what gives the app its precision.
+"""
+
+import os
+import re
+import sys
+
+#: Model used when a CUDA GPU is available (best accuracy).
+MODEL_NAME = "large-v3"
+#: Model used on CPU-only machines (good accuracy, stays fast without a GPU).
+CPU_MODEL_NAME = "small"
+#: Values accepted from the STT_MODEL environment variable. Restricting to
+#: known Whisper names prevents the env var from pointing the downloader at
+#: an arbitrary HuggingFace repo.
+ALLOWED_MODELS = frozenset({
+    "tiny", "tiny.en", "base", "base.en", "small", "small.en",
+    "medium", "medium.en", "large-v2", "large-v3", "large-v3-turbo",
+    "distil-large-v3",
+})
+
+
+def _add_nvidia_dll_dirs():
+    """Expose pip-installed cuBLAS/cuDNN DLLs to CTranslate2 on Windows.
+
+    The nvidia-cublas-cu12 / nvidia-cudnn-cu12 wheels drop their DLLs inside
+    site-packages/nvidia/<lib>/bin, which is not on the loader path by default.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import nvidia
+    except ImportError:
+        return
+    for pkg_root in nvidia.__path__:
+        for sub in os.listdir(pkg_root):
+            for leaf in ("bin", "lib"):
+                dll_dir = os.path.join(pkg_root, sub, leaf)
+                if os.path.isdir(dll_dir):
+                    os.add_dll_directory(dll_dir)
+                    os.environ["PATH"] = dll_dir + os.pathsep + os.environ.get("PATH", "")
+
+
+class Transcriber:
+    """Thin wrapper around a lazily loaded faster-whisper model."""
+
+    def __init__(self):
+        self.model = None
+        self.pipeline = None
+        self.model_name = None
+        self.device_label = None
+        self.gpu_error = None  # why the GPU load failed, if it did
+
+    def load(self) -> str:
+        """Load the Whisper model, preferring the GPU.
+
+        Tries ``large-v3`` on CUDA first; if no usable GPU is present, falls
+        back to the lighter ``small`` model on CPU so the app stays responsive
+        on any machine. Set the ``STT_MODEL`` environment variable to force a
+        specific model on either device.
+
+        Returns:
+            str: Human-readable device label, e.g. ``"GPU (CUDA, float16)"``.
+        """
+        _add_nvidia_dll_dirs()
+        import numpy as np
+        from faster_whisper import BatchedInferencePipeline, WhisperModel
+
+        override = os.environ.get("STT_MODEL")
+        if override and override not in ALLOWED_MODELS:
+            override = None  # unknown value: ignore and use the defaults
+        try:
+            self.model_name = override or MODEL_NAME
+            self.model = WhisperModel(self.model_name, device="cuda",
+                                      compute_type="float16")
+            self.device_label = "GPU (CUDA, float16)"
+        except Exception as exc:
+            self.gpu_error = str(exc)
+            self.model_name = override or CPU_MODEL_NAME
+            self.model = WhisperModel(self.model_name, device="cpu",
+                                      compute_type="int8")
+            self.device_label = "CPU (int8)"
+
+        # Batched pipeline decodes VAD-split chunks in parallel — much faster
+        # than sequential decoding, especially for longer dictations.
+        self.pipeline = BatchedInferencePipeline(model=self.model)
+
+        # Warm up: the first pass through the model triggers one-time cuDNN
+        # kernel selection. Paying that cost here (on 1s of silence) keeps the
+        # user's first real transcription fast.
+        warmup = np.zeros(16000, dtype=np.float32)
+        segments, _ = self.model.transcribe(warmup, language="en", beam_size=1,
+                                            vad_filter=False)
+        for _ in segments:
+            pass
+        return self.device_label
+
+    def transcribe(self, audio):
+        """Transcribe recorded audio to text.
+
+        Args:
+            audio (numpy.ndarray): 1-D float32 samples at 16 kHz.
+
+        Returns:
+            tuple: ``(text, lang, probability, duration)`` where
+
+                - text (str): cleaned transcript (punctuated, spell-correct);
+                - lang (str): ``"en"`` or ``"es"`` — auto-detected; anything
+                  that is not Spanish maps to English so the two UI panes
+                  always have a home for the text;
+                - probability (float): confidence of the language detection;
+                - duration (float): seconds of speech that were transcribed.
+        """
+        segments, info = self.pipeline.transcribe(
+            audio,
+            beam_size=5,        # wider beam = more accurate decoding
+            batch_size=16,      # decode up to 16 VAD chunks concurrently
+        )
+        # Iterating the generator is what actually runs the transcription.
+        text = " ".join(seg.text.strip() for seg in segments)
+        text = re.sub(r"\s+", " ", text).strip()
+        lang = "es" if info.language == "es" else "en"
+        return text, lang, info.language_probability, info.duration
