@@ -65,6 +65,16 @@ jobs:
       - name: Zip release assets
         run: powershell -ExecutionPolicy Bypass -File scripts/build_release.ps1 -Stage zip
 
+      # The exe must actually load the model and transcribe, or no release.
+      # (Catches frozen-build-only failures that unit tests can't see.)
+      - name: Self-test the built exe
+        env:
+          STT_MODEL: tiny  # small download; the code path is identical
+        run: |
+          $p = Start-Process dist\SpeechToText\SpeechToText.exe -ArgumentList "--selftest" -Wait -PassThru
+          if (Test-Path selftest.log) { Get-Content selftest.log }
+          if ($p.ExitCode -ne 0) { throw "Selftest failed with exit code $($p.ExitCode)" }
+
       - name: Generate SHA-256 checksums
         run: |
           cd release

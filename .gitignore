@@ -11,4 +11,5 @@ release/
 
 # Audio scratch files
 *.wav
+selftest.log
 speechtotextapp.py

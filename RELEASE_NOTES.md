@@ -1,9 +1,18 @@
-## Speech to Text v2.0.1 — signed Windows builds 🐉🔏
+## Speech to Text v2.0.2 — critical fix: "Model failed to load" 🛠️
 
-Same great app as v2.0.0 — now `SpeechToText.exe` is **digitally signed**
-(Azure Trusted Signing, publisher-validated), so Windows can verify the
-authenticity and integrity of your download. `checksums.txt` (SHA-256) is
-also attached for manual verification.
+**If you downloaded v2.0.0 or v2.0.1, please update to this version.**
+Those builds showed *"Model failed to load: [WinError 3]"* at startup and
+could not transcribe. The cause was a packaging bug in how the app looked
+for GPU libraries inside the frozen build — fixed here, and covered by a
+regression test.
+
+**New safeguard:** every release now runs a built-in self-test in CI — the
+actual shipped `SpeechToText.exe` must load the Whisper model and transcribe
+before the release can publish. You can run it yourself anytime:
+`SpeechToText.exe --selftest` (writes `selftest.log`, exit code 0 = healthy).
+
+Windows builds remain **digitally signed** (verified publisher: Jose
+Mondragon, via Azure Trusted Signing) with SHA-256 `checksums.txt` attached.
 
 ### Which download?
 
@@ -19,8 +28,8 @@ speech model once (GPU ~3 GB, CPU ~460 MB); after that it starts in seconds.
 ### What the app does
 
 Dictate in **English or Spanish** — automatic language detection, local
-Whisper transcription (nothing recorded ever leaves your machine), both
-languages shown side by side, editable, with auto-copy to clipboard, global
-hotkeys (`Ctrl+Alt+R`), and a mini always-on-top mode. Untick
-**Translate (online)** and the app makes zero network calls — see
+Whisper transcription (audio never leaves your machine), both languages
+side by side, editable, auto-copy to clipboard, global hotkeys
+(`Ctrl+Alt+R`), mini always-on-top mode. Untick **Translate (online)** and
+the app makes zero network calls — see
 [Privacy & security](README.md#privacy--security).

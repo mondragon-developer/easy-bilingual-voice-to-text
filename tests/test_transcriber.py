@@ -1,6 +1,7 @@
 """Unit tests for src.transcriber (text assembly + language mapping)."""
 
 import sys
+import types
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -78,3 +79,19 @@ class TestNvidiaDllDirs:
         with patch("src.transcriber.sys") as fake_sys:
             fake_sys.platform = "linux"
             _add_nvidia_dll_dirs()  # must not raise or touch the registry
+
+    def test_frozen_build_is_a_noop(self):
+        # PyInstaller builds carry their CUDA DLLs next to the app already.
+        with patch("src.transcriber.sys") as fake_sys:
+            fake_sys.platform = "win32"
+            fake_sys.frozen = True
+            _add_nvidia_dll_dirs()  # must return before importing nvidia
+
+    def test_phantom_namespace_package_is_harmless(self):
+        # Regression (v2.0.1 bug): PyInstaller registered an 'nvidia'
+        # package whose __path__ pointed to a directory that doesn't exist,
+        # so os.listdir raised WinError 3 and the model never loaded.
+        phantom = types.ModuleType("nvidia")
+        phantom.__path__ = [r"C:\does\not\exist\nvidia"]
+        with patch.dict(sys.modules, {"nvidia": phantom}):
+            _add_nvidia_dll_dirs()  # must not raise

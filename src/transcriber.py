@@ -28,20 +28,30 @@ def _add_nvidia_dll_dirs():
 
     The nvidia-cublas-cu12 / nvidia-cudnn-cu12 wheels drop their DLLs inside
     site-packages/nvidia/<lib>/bin, which is not on the loader path by default.
+
+    Only needed when running from source: PyInstaller builds place the CUDA
+    DLLs directly next to the app's libraries, where Windows finds them on
+    its own. (In frozen builds ``import nvidia`` may even succeed as an empty
+    phantom package whose path does not exist, so we must not touch it.)
     """
-    if sys.platform != "win32":
+    if sys.platform != "win32" or getattr(sys, "frozen", False):
         return
     try:
         import nvidia
-    except ImportError:
+        for pkg_root in nvidia.__path__:
+            if not os.path.isdir(pkg_root):
+                continue
+            for sub in os.listdir(pkg_root):
+                for leaf in ("bin", "lib"):
+                    dll_dir = os.path.join(pkg_root, sub, leaf)
+                    if os.path.isdir(dll_dir):
+                        os.add_dll_directory(dll_dir)
+                        os.environ["PATH"] = (dll_dir + os.pathsep
+                                              + os.environ.get("PATH", ""))
+    except Exception:
+        # Never let DLL-path setup break model loading; worst case CUDA
+        # init fails later and the app falls back to CPU.
         return
-    for pkg_root in nvidia.__path__:
-        for sub in os.listdir(pkg_root):
-            for leaf in ("bin", "lib"):
-                dll_dir = os.path.join(pkg_root, sub, leaf)
-                if os.path.isdir(dll_dir):
-                    os.add_dll_directory(dll_dir)
-                    os.environ["PATH"] = dll_dir + os.pathsep + os.environ.get("PATH", "")
 
 
 class Transcriber:
