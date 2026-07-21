@@ -141,6 +141,18 @@ The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs,
 | Status says CPU but I have an NVIDIA GPU | Update NVIDIA drivers; the status bar shows the exact CUDA error |
 | Translation pane says translation failed | You're offline or Google is unreachable — the spoken pane still works |
 | First start is slow | The model downloads once to `~/.cache/huggingface`; later starts are fast |
+| "Model failed to load: [WinError 3]" | You're on v2.0.0/v2.0.1 — [update to v2.0.2+](../../releases/latest), which fixed this packaging bug |
+
+### Verify your download
+
+- **Integrity:** compare your zip's SHA-256 against `checksums.txt` attached
+  to the release — `Get-FileHash SpeechToText-Windows-*.zip` in PowerShell.
+- **Authenticity:** right-click `SpeechToText.exe` → *Properties → Digital
+  Signatures* — the publisher is Jose Mondragon.
+- **Health:** run `SpeechToText.exe --selftest` — it loads the speech model
+  and transcribes a test signal without opening a window, writes
+  `selftest.log`, and exits with code 0 when everything works. CI runs this
+  exact check on every release before it can publish.
 
 ## Development
 
