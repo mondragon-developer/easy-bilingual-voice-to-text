@@ -30,15 +30,20 @@ are fully editable with native copy/cut/paste.
 
 1. Go to [**Releases**](../../releases) and download the zip that fits your PC:
    - **`SpeechToText-Windows-GPU.zip`** (~1.5 GB) — for PCs with an NVIDIA GPU (much faster)
-   - **`SpeechToText-Windows-CPU.zip`** (~300 MB) — for any Windows PC
+   - **`SpeechToText-Windows-CPU.zip`** (~95 MB) — for any Windows PC
 2. Unzip anywhere, open the folder, and run **`SpeechToText.exe`**.
 3. First launch downloads the speech model once (GPU build ~3 GB,
    CPU build ~460 MB) — later launches start in seconds.
 
-> **Windows SmartScreen note:** the first time you run the app Windows may say
-> "Windows protected your PC" because the download is not yet code-signed.
-> Click **More info → Run anyway**. The full source code is in this repository
-> if you want to verify what the app does.
+> **✅ Signed for Windows:** releases from v2.0.1 onward are digitally signed
+> by verified publisher **Jose Mondragon** through Microsoft Azure Trusted
+> Signing — right-click `SpeechToText.exe` → *Properties → Digital
+> Signatures* to verify. Each release also ships a `checksums.txt` (SHA-256)
+> so you can confirm your download is byte-identical to what CI built.
+> If SmartScreen still shows a prompt on very new releases (reputation for
+> fresh signatures builds up over days), the publisher name shown is mine —
+> and the full source code is in this repository if you want to see exactly
+> what the app does.
 
 ### Option B: Run from source
 
@@ -123,6 +128,10 @@ The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs,
 - Auto-copy writes to your clipboard only when the checkbox is on.
 - No telemetry, no analytics, no accounts. Transcripts are saved only when
   you click Save. Audio is never written to disk.
+- **Signed, reproducible releases:** Windows binaries are code-signed
+  (Azure Trusted Signing, verified publisher), built by GitHub Actions from
+  the exact versions in `requirements-lock.txt` — the build logs are public
+  in the Actions tab — and published with SHA-256 checksums.
 
 ## Troubleshooting
 
