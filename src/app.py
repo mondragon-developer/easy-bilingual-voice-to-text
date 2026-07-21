@@ -22,9 +22,11 @@ dictate into any application: hotkey -> speak -> hotkey -> paste (the spoken
 text is auto-copied to the clipboard when Auto-copy is on).
 """
 
+import sys
 import threading
 import time
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
@@ -52,6 +54,22 @@ HOTKEY_RECORD = "ctrl+alt+r"
 HOTKEY_MINI = "ctrl+alt+m"
 
 
+def _asset_path(name: str) -> str:
+    """Absolute path to a bundled asset file.
+
+    Works both when running from source (assets/ next to main.py) and from
+    a PyInstaller build (assets/ inside the frozen bundle).
+
+    Args:
+        name: File name inside the assets directory.
+
+    Returns:
+        str: Absolute path to the asset.
+    """
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    return str(base / "assets" / name)
+
+
 class SpeechToTextApp(ctk.CTk):
     """Main window: recording control, bilingual panes, mini mode, hotkeys.
 
@@ -65,6 +83,7 @@ class SpeechToTextApp(ctk.CTk):
         self.title(f"Speech to Text v{__version__} — EN / ES")
         self.geometry("1000x660")
         self.minsize(820, 520)
+        self._set_window_icon()
 
         self.recorder = AudioRecorder()
         self.transcriber = Transcriber()
@@ -86,6 +105,19 @@ class SpeechToTextApp(ctk.CTk):
         threading.Thread(target=self._load_model, daemon=True).start()
 
     # ------------------------------------------------------------------ UI
+
+    def _set_window_icon(self):
+        """Apply the dragon logo to the title bar and taskbar (best effort)."""
+        try:
+            self.iconbitmap(_asset_path("icon.ico"))  # crisp on Windows
+        except tk.TclError:
+            pass
+        try:
+            # Cross-platform fallback; also inherited by Toplevel windows.
+            self._icon_img = tk.PhotoImage(file=_asset_path("icon_64.png"))
+            self.iconphoto(True, self._icon_img)
+        except tk.TclError:
+            pass
 
     def _build_ui(self):
         """Create all widgets: top bar, the two text panes, and bottom bar."""
