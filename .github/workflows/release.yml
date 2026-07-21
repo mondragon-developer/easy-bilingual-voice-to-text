@@ -30,6 +30,10 @@ jobs:
   build-and-release:
     needs: test
     runs-on: windows-latest
+    env:
+      # Signing turns on automatically once the Azure secrets are configured
+      # in Settings -> Secrets and variables -> Actions.
+      SIGNING_ENABLED: ${{ secrets.AZURE_CLIENT_ID != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -38,10 +42,41 @@ jobs:
       # Lockfile = releases are built from exact, recorded versions.
       - run: pip install -r requirements-lock.txt
       - run: pip install pyinstaller
-      - run: powershell -ExecutionPolicy Bypass -File scripts/build_release.ps1
+
+      - name: Build (PyInstaller)
+        run: powershell -ExecutionPolicy Bypass -File scripts/build_release.ps1 -Stage build
+
+      - name: Sign SpeechToText.exe (Azure Trusted Signing)
+        if: env.SIGNING_ENABLED == 'true'
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ vars.TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ vars.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: securepass-signing
+          files-folder: dist/SpeechToText
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Zip release assets
+        run: powershell -ExecutionPolicy Bypass -File scripts/build_release.ps1 -Stage zip
+
+      - name: Generate SHA-256 checksums
+        run: |
+          cd release
+          Get-FileHash *.zip -Algorithm SHA256 | ForEach-Object {
+            "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)"
+          } | Out-File -Encoding ascii checksums.txt
+          Get-Content checksums.txt
+
       - uses: softprops/action-gh-release@v2
         with:
           body_path: RELEASE_NOTES.md
           files: |
             release/SpeechToText-Windows-GPU.zip
             release/SpeechToText-Windows-CPU.zip
+            release/checksums.txt

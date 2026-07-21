@@ -2,20 +2,30 @@
 # Used locally and by .github/workflows/release.yml (CI).
 #   SpeechToText-Windows-CPU.zip  - no CUDA DLLs, runs anywhere
 #   SpeechToText-Windows-GPU.zip  - bundles cuBLAS/cuDNN for NVIDIA cards
+#
+# -Stage build : PyInstaller only (CI signs the exe after this)
+# -Stage zip   : zip the (possibly signed) build into both release zips
+# -Stage all   : everything (default; local unsigned builds)
+
+param([ValidateSet("all", "build", "zip")] [string]$Stage = "all")
 
 $ErrorActionPreference = "Stop"
 $proj = Split-Path $PSScriptRoot -Parent
 $out = Join-Path $proj "release"
 Set-Location $proj
 
-python -m PyInstaller --noconfirm --clean --windowed --name SpeechToText `
-  --icon "$proj\assets\icon.ico" `
-  --add-data "$proj\assets;assets" `
-  --collect-all customtkinter `
-  --collect-all faster_whisper `
-  --collect-all sounddevice `
-  main.py
-if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
+if ($Stage -in @("all", "build")) {
+    python -m PyInstaller --noconfirm --clean --windowed --name SpeechToText `
+      --icon "$proj\assets\icon.ico" `
+      --add-data "$proj\assets;assets" `
+      --collect-all customtkinter `
+      --collect-all faster_whisper `
+      --collect-all sounddevice `
+      main.py
+    if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
+}
+
+if ($Stage -eq "build") { Write-Output "BUILD_STAGE_DONE"; exit 0 }
 
 New-Item -ItemType Directory -Force $out | Out-Null
 
