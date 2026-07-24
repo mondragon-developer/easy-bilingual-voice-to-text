@@ -5,6 +5,7 @@ desktop session — they run on a normal Windows/macOS/Linux machine but
 would need a virtual display (e.g. Xvfb) on a headless CI runner.
 """
 
+import re
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -50,6 +51,7 @@ def app(_shared_app):
     a._processing = False
     for box in a.boxes.values():
         box.delete("1.0", "end")
+    a._entry_no, a._entry_stamp, a._stamp_day, a._stamped = 0, None, None, set()
     if a.mini is not None and a.mini.winfo_exists():
         a.toggle_mini_mode()  # make sure we start restored, no pill
     a.deiconify()
@@ -72,6 +74,99 @@ class TestPanes:
         assert "typed by hand" in app.boxes["en"].get("1.0", "end-1c")
 
 
+class TestEntries:
+    """Each recording is its own headed entry; headers never get copied."""
+
+    def test_each_recording_starts_a_numbered_entry(self, app):
+        app._show_result("One.", "en", 0.9)
+        app._show_result("Two.", "en", 0.9)
+        raw = app.boxes["en"].get("1.0", "end-1c")
+        assert raw.startswith("#1 · ")
+        assert "\n\n#2 · " in raw
+        assert app._pane_text("en") == "One.\n\nTwo."
+
+    def test_date_is_shown_only_on_the_first_entry(self, app):
+        app._show_result("One.", "en", 0.9)
+        app._show_result("Two.", "en", 0.9)
+        first, second = [line for line in
+                         app.boxes["en"].get("1.0", "end-1c").splitlines()
+                         if line.startswith("#")]
+        assert re.match(r"#1 · [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} [AP]M$", first)
+        assert re.match(r"#2 · \d{1,2}:\d{2} [AP]M$", second)
+
+    def test_both_panes_share_one_number_and_time(self, app):
+        app._show_result("Hello.", "en", 0.9)
+        app._append_to_pane("es", "Hola.")
+        heads = [box.get("1.0", "1.end") for box in app.boxes.values()]
+        assert heads[0] == heads[1]
+
+    def test_pane_with_no_text_gets_no_header(self, app):
+        app._show_result("Hello.", "en", 0.9)  # translation never arrives
+        assert app.boxes["es"].get("1.0", "end-1c") == ""
+
+    def test_numbering_restarts_once_both_panes_are_empty(self, app):
+        app._show_result("One.", "en", 0.9)
+        app._show_result("Two.", "en", 0.9)
+        app.boxes["en"].delete("1.0", "end")
+        app._show_result("Fresh start.", "en", 0.9)
+        assert app.boxes["en"].get("1.0", "end-1c").startswith("#1 · ")
+
+    def test_numbering_continues_while_one_pane_holds_text(self, app):
+        app._show_result("Hello.", "en", 0.9)
+        app._append_to_pane("es", "Hola.")
+        app.boxes["en"].delete("1.0", "end")  # only the English side cleared
+        app._show_result("Again.", "en", 0.9)
+        assert app.boxes["en"].get("1.0", "end-1c").startswith("#2 · ")
+
+    def test_copy_button_leaves_headers_behind(self, app):
+        app._show_result("One.", "en", 0.9)
+        app._show_result("Two.", "en", 0.9)
+        app.copy_pane("en")
+        assert app.clipboard_get() == "One.\n\nTwo."
+
+    def test_selection_copy_leaves_headers_behind(self, app):
+        app._show_result("One.", "en", 0.9)
+        app._show_result("Two.", "en", 0.9)
+        inner = app.boxes["en"]._textbox
+        app._select_all(inner)
+        app._copy_selection(inner)
+        assert app.clipboard_get() == "One.\n\nTwo."
+
+    def test_selection_copy_of_a_partial_span(self, app):
+        app._show_result("One.", "en", 0.9)
+        app._show_result("Two.", "en", 0.9)
+        inner = app.boxes["en"]._textbox
+        inner.tag_add("sel", "2.0", "4.end")  # first text line through header 2
+        app._copy_selection(inner)
+        assert app.clipboard_get() == "One.\n\n"
+
+    def test_cut_copies_stripped_text_and_removes_the_selection(self, app):
+        app._show_result("One.", "en", 0.9)
+        inner = app.boxes["en"]._textbox
+        app._select_all(inner)
+        app._copy_selection(inner, cut=True)
+        assert app.clipboard_get() == "One."
+        assert app.boxes["en"].get("1.0", "end-1c") == ""
+
+    def test_hand_edits_beside_a_header_stay_copyable(self, app):
+        """Tk gives new text the tags shared by both neighbours — so text
+        typed against a header must not be absorbed into it and vanish
+        from the clipboard."""
+        app._show_result("One.", "en", 0.9)
+        inner = app.boxes["en"]._textbox
+        inner.insert("2.0", "Edited: ")      # hard against the header's newline
+        inner.insert("end-1c", " tail")
+        assert app._pane_text("en") == "Edited: One. tail"
+
+    def test_saved_file_keeps_the_headers(self, app, tmp_path):
+        app._show_result("One.", "en", 0.9)
+        out = tmp_path / "out.txt"
+        with patch("src.app.filedialog.asksaveasfilename", return_value=str(out)):
+            app.save_transcript()
+        content = out.read_text(encoding="utf-8")
+        assert "#1 · " in content and "One." in content
+
+
 class TestShowResult:
     def test_updates_badge_titles_and_pane(self, app):
         app._show_result("Hola mundo.", "es", 0.98)
@@ -80,7 +175,7 @@ class TestShowResult:
         assert "98%" in app.lang_badge.cget("text")
         assert "spoken" in app.pane_titles["es"].cget("text")
         assert "translation" in app.pane_titles["en"].cget("text")
-        assert app.boxes["es"].get("1.0", "end-1c") == "Hola mundo."
+        assert app._pane_text("es") == "Hola mundo."
 
     def test_autocopy_places_text_on_clipboard(self, app):
         app._show_result("Copy me.", "en", 0.9, autocopy=True)
@@ -102,8 +197,8 @@ class TestProcessAudio:
             app._process_audio(np.zeros(16000, dtype=np.float32), autocopy=False)
         for _ in range(20):
             app.update()
-        assert app.boxes["en"].get("1.0", "end-1c") == "Hello."
-        assert app.boxes["es"].get("1.0", "end-1c") == "Hola."
+        assert app._pane_text("en") == "Hello."
+        assert app._pane_text("es") == "Hola."
         assert "Done" in app.status_lbl.cget("text")
 
     def test_translate_off_makes_no_network_call(self, app):
@@ -114,7 +209,7 @@ class TestProcessAudio:
             for _ in range(20):
                 app.update()
         fake_translate.assert_not_called()
-        assert app.boxes["en"].get("1.0", "end-1c") == "Hello."
+        assert app._pane_text("en") == "Hello."
         assert app.boxes["es"].get("1.0", "end-1c") == ""
         assert "Translation off" in app.status_lbl.cget("text")
 
@@ -124,7 +219,7 @@ class TestProcessAudio:
             app._process_audio(np.zeros(16000, dtype=np.float32), autocopy=False)
         for _ in range(20):
             app.update()
-        assert app.boxes["en"].get("1.0", "end-1c") == "Hello."
+        assert app._pane_text("en") == "Hello."
         assert app.boxes["es"].get("1.0", "end-1c") == ""
         assert "translation failed" in app.status_lbl.cget("text")
 

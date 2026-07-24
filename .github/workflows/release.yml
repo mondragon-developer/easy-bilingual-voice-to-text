@@ -1,21 +1,58 @@
-# Automatic releases: push a tag like v2.0.0 and this workflow tests the
-# code, builds both Windows zips, and publishes a GitHub Release with the
-# zips attached. Update RELEASE_NOTES.md before tagging.
+# Releases publish themselves: bump __version__ in src/__init__.py, update
+# RELEASE_NOTES.md, and push to main. This workflow tests the code, builds
+# both Windows zips, and publishes a GitHub Release tagged with that version.
+# Pushes that don't change the version are skipped, so ordinary commits cost
+# only the cheap version check.
 #
-#   git tag v2.0.1
-#   git push origin v2.0.1
+# Still supported: pushing a tag by hand (git tag v2.1.0 && git push origin
+# v2.1.0), or "Run workflow" from the Actions tab.
+#
+# The tag is created by the release step itself rather than pushed from a
+# job — a tag pushed with GITHUB_TOKEN would not start a new workflow run,
+# so the release would never build.
 
 name: Release
 
 on:
   push:
+    branches: [main]
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+      release: ${{ steps.pick.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # tags, so we can tell an already-released version
+      - id: pick
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            tag="${GITHUB_REF#refs/tags/}"
+            release=true
+          else
+            tag="v$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/__init__.py)"
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              release=false
+              echo "::notice::$tag is already released — nothing to do."
+            else
+              release=true
+              echo "::notice::Releasing $tag."
+            fi
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
   test:
+    needs: version
+    if: needs.version.outputs.release == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +65,7 @@ jobs:
       - run: python -m pytest tests --ignore tests/test_app.py -q
 
   build-and-release:
-    needs: test
+    needs: [version, test]
     runs-on: windows-latest
     env:
       # Signing turns on automatically once the Azure secrets are configured
@@ -85,6 +122,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.version.outputs.tag }}
           body_path: RELEASE_NOTES.md
           files: |
             release/SpeechToText-Windows-GPU.zip

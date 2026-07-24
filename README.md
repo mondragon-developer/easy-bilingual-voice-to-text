@@ -12,6 +12,7 @@ are fully editable with native copy/cut/paste.
 
 - 🎙️ **Auto language detection** — speak EN or ES, no switch to flip
 - 🌐 **Both languages always shown** — spoken text in its pane, translation in the other
+- 🗂️ **One entry per recording** — each dictation starts a new block headed by its number and time; the headers are never copied or pasted
 - ✅ **Precise** — Whisper produces punctuated, correctly spelled text
 - ⚡ **Fast** — GPU-accelerated on NVIDIA cards (17x realtime on a modern GPU); automatic CPU mode everywhere else
 - ⏱️ **No time limit** — Record / Stop whenever you want
@@ -87,8 +88,8 @@ macOS notes:
 |---|---|
 | Start / stop recording | **● Record** button, `Ctrl+R`, or `Ctrl+Alt+R` from **any** app (Windows) |
 | Mini mode / restore | **🗕 Mini** button or `Ctrl+Alt+M` (Windows) |
-| Copy a pane | **Copy** button under the pane |
-| Save both languages to .txt | **Save transcript** or `Ctrl+S` |
+| Copy a pane | **Copy** button under the pane (entry headers are left out) |
+| Save both languages to .txt | **Save transcript** or `Ctrl+S` (headers kept) |
 | Edit text | Click and type; right-click for Cut/Copy/Paste; `Ctrl+Z` undo |
 | Auto-copy after dictation | Checkbox in the bottom bar (on by default) |
 | Translation on/off | **Translate (online)** checkbox — untick to stay 100% offline |
@@ -100,6 +101,17 @@ whatever app you're writing in.
 Each recording **appends**: the spoken text goes to its language's pane and
 the translation to the other, so each pane always holds the full transcript
 in one language — even if you switch languages between recordings.
+
+Every recording is its own **entry**, set off by a blank line and a small
+gray header with a number and the time (`#3 · 2:41 PM`) — the date is added
+on the first entry of the day. Both panes use the same number and time for a
+given recording, so the two sides line up. Numbering restarts at `#1` once
+both panes are empty.
+
+The headers are for reading, not for pasting: **Copy**, `Ctrl+C` on a
+selection, `Ctrl+X`, and auto-copy all leave them out, so you paste only the
+words. **Save transcript** is the exception — the `.txt` file keeps the
+headers, since a saved transcript is a record of when things were said.
 
 ## Choosing a model
 
@@ -158,7 +170,7 @@ The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs,
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest tests/        # 43 unit tests
+python -m pytest tests/        # 60 tests
 ```
 
 ```
@@ -170,6 +182,13 @@ src/
   app.py             CustomTkinter two-pane UI, mini mode, global hotkeys
 tests/               pytest suite (logic, recorder, transcriber, translator, UI)
 ```
+
+### Releasing
+
+Bump `__version__` in `src/__init__.py`, rewrite `RELEASE_NOTES.md` (it
+becomes the release body), and push to `main`. CI tests the code, builds and
+signs both Windows zips, self-tests the built exe, and publishes the release
+tagged with that version. Pushes that leave the version alone don't release.
 
 ## License
 

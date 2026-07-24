@@ -12,8 +12,12 @@ Layout
 
 Every recording appends: the spoken text goes to its language's pane and the
 translation to the other, so each pane always holds the full transcript in
-one language. Both panes are plain editable text with native Ctrl+C/X/V,
-a right-click menu, and Ctrl+A select-all.
+one language. Each recording starts a new entry, set off by a blank line and
+a small gray header (``#3 · 2:41 PM``); the same number and time head the
+entry in both panes, so the two sides line up. Headers are display only —
+every copy path strips them, so what you paste is just the words. Both panes
+are plain editable text with native Ctrl+C/X/V, a right-click menu, and
+Ctrl+A select-all.
 
 Mini mode collapses the app into a small always-on-top pill (record button +
 level meter) docked at the screen edge; the global hotkeys Ctrl+Alt+R
@@ -26,6 +30,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox
 
@@ -49,6 +54,9 @@ DONE_COLOR = "#15803d"
 MINI_BG = "#111827"
 TEXT_FONT = ("Segoe UI", 15)
 UI_FONT = ("Segoe UI", 13)
+STAMP_FONT = ("Segoe UI", 11, "bold")
+STAMP_COLOR = "#6b7280"
+STAMP_TAG = "stamp"          # marks entry headers, which no copy path emits
 
 HOTKEY_RECORD = "ctrl+alt+r"
 HOTKEY_MINI = "ctrl+alt+m"
@@ -92,6 +100,10 @@ class SpeechToTextApp(ctk.CTk):
         self._processing = False          # a transcription is in flight
         self._state = "disabled"          # idle | recording | processing | done | disabled
         self.mini = None                  # the mini-mode pill widget, when open
+        self._entry_no = 0                # entries written since the panes were empty
+        self._entry_stamp = None          # header for the entry being written
+        self._stamp_day = None            # date the last header showed, if any
+        self._stamped = set()             # panes already headed for this entry
         self.autocopy_var = tk.BooleanVar(value=True)
         self.translate_var = tk.BooleanVar(value=True)
 
@@ -175,6 +187,7 @@ class SpeechToTextApp(ctk.CTk):
             box.grid(row=1, column=0, columnspan=2, sticky="nsew",
                      padx=10, pady=(0, 8))
             self._attach_editing_helpers(box)
+            self._style_stamps(box)
             self.boxes[lang] = box
 
             copy_btn = ctk.CTkButton(pane, text="Copy", width=90, font=UI_FONT,
@@ -229,6 +242,50 @@ class SpeechToTextApp(ctk.CTk):
                          command=lambda: self._select_all(inner))
         box.bind("<Button-3>", lambda e: menu.tk_popup(e.x_root, e.y_root))
         box.bind("<Control-a>", lambda e: self._select_all(inner) or "break")
+        # Take over Ctrl+C/Ctrl+X (and the menu, which fires the same virtual
+        # events) so a hand-made selection drops entry headers like the
+        # Copy button does.
+        inner.bind("<<Copy>>", lambda e: self._copy_selection(inner))
+        inner.bind("<<Cut>>", lambda e: self._copy_selection(inner, cut=True))
+
+    def _style_stamps(self, box):
+        """Style the entry-header tag: small, gray, with room above it.
+
+        The tag font has to be set on the inner tk.Text — CTkTextbox.tag_config
+        rejects ``font`` because it cannot rescale it — so the display scale
+        factor is applied here by hand, once, at build time.
+
+        Args:
+            box (ctk.CTkTextbox): The pane textbox to configure.
+        """
+        inner = getattr(box, "_textbox", box)
+        scale = ctk.ScalingTracker.get_widget_scaling(self)
+        family, size, weight = STAMP_FONT
+        inner.tag_config(STAMP_TAG, foreground=STAMP_COLOR,
+                         font=(family, int(size * scale), weight),
+                         spacing1=int(8 * scale), spacing3=int(3 * scale))
+
+    def _copy_selection(self, inner, cut=False):
+        """Put the selection on the clipboard with entry headers removed.
+
+        Args:
+            inner (tkinter.Text): The pane's underlying text widget.
+            cut (bool): Also delete the selection after copying it.
+
+        Returns:
+            str: ``"break"``, so Tk's own copy does not run as well.
+        """
+        try:
+            first, last = inner.index("sel.first"), inner.index("sel.last")
+        except tk.TclError:
+            return "break"  # nothing selected
+        text = self._strip_stamps(inner, first, last)
+        if text:
+            self.clipboard_clear()
+            self.clipboard_append(text)
+        if cut:
+            inner.delete(first, last)
+        return "break"
 
     @staticmethod
     def _select_all(inner):
@@ -419,6 +476,7 @@ class SpeechToTextApp(ctk.CTk):
             prob (float): Language-detection confidence (0..1).
             autocopy (bool): Copy ``text`` to the clipboard when True.
         """
+        self._begin_entry()
         self.lang_badge.configure(
             text=f"Detected: {LANG_NAMES[lang]} ({prob:.0%})")
         self.pane_titles[lang].configure(text=f"{LANG_NAMES[lang]} — spoken")
@@ -430,8 +488,35 @@ class SpeechToTextApp(ctk.CTk):
             self.clipboard_clear()
             self.clipboard_append(text)
 
+    def _begin_entry(self):
+        """Open a new transcript entry: bump the counter, stamp the clock.
+
+        Runs once per recording, before any of its text is appended, so the
+        spoken pane and the translation pane share one number and one time.
+        The header text is only *computed* here — writing it is left to
+        ``_append_to_pane``, so a pane that receives nothing for this entry
+        (translation off, or it failed) is not left with a bare header.
+
+        Numbering restarts at #1 whenever both panes are empty, and the date
+        is shown only on the first entry of a day so it stays out of the way
+        during a long session.
+        """
+        if not any(box.get("1.0", "end-1c").strip()
+                   for box in self.boxes.values()):
+            self._entry_no = 0
+            self._stamp_day = None
+        self._entry_no += 1
+        now = datetime.now()
+        clock = now.strftime("%I:%M %p").lstrip("0")  # %-I/%#I are not portable
+        if now.date() == self._stamp_day:
+            self._entry_stamp = f"#{self._entry_no} · {clock}"
+        else:
+            self._entry_stamp = f"#{self._entry_no} · {now:%b} {now.day}, {clock}"
+            self._stamp_day = now.date()
+        self._stamped = set()
+
     def _append_to_pane(self, lang, text):
-        """Append text to a language pane, space-separated from what's there.
+        """Append text to a language pane, under the current entry's header.
 
         Args:
             lang (str): Pane key, ``"en"`` or ``"es"``.
@@ -439,10 +524,60 @@ class SpeechToTextApp(ctk.CTk):
         """
         box = self.boxes[lang]
         existing = box.get("1.0", "end-1c")
-        if existing and not existing.endswith((" ", "\n")):
+        if self._entry_stamp and lang not in self._stamped:
+            self._stamped.add(lang)
+            if existing.strip():
+                # Land on exactly one blank line, whatever the pane ends with.
+                trailing = len(existing) - len(existing.rstrip("\n"))
+                box.insert("end", "\n" * max(0, 2 - trailing))
+            # The header's newline carries the tag too, so stripping a header
+            # takes its line break with it and paragraphs stay clean.
+            box.insert("end", f"{self._entry_stamp}\n", STAMP_TAG)
+        elif existing and not existing.endswith((" ", "\n")):
             box.insert("end", " ")
         box.insert("end", text)
         box.see("end")
+
+    def _pane_text(self, lang, keep_stamps=False):
+        """Return a pane's contents, without the entry headers by default.
+
+        Args:
+            lang (str): Pane key, ``"en"`` or ``"es"``.
+            keep_stamps (bool): Keep the ``#n · time`` headers in the result.
+
+        Returns:
+            str: The pane's text.
+        """
+        box = self.boxes[lang]
+        if keep_stamps:
+            return box.get("1.0", "end-1c")
+        return self._strip_stamps(box, "1.0", "end-1c")
+
+    @staticmethod
+    def _strip_stamps(widget, start, end):
+        """Text between two indices with every entry header left out.
+
+        Args:
+            widget: A tk.Text, or a CTkTextbox, which proxies the same calls.
+            start (str): Index to read from.
+            end (str): Index to read to.
+
+        Returns:
+            str: The text in that span, minus the header-tagged runs.
+        """
+        parts, cursor = [], start
+        ranges = widget.tag_ranges(STAMP_TAG)  # Tk returns these in order
+        for first, last in zip(ranges[::2], ranges[1::2]):
+            if widget.compare(last, "<=", cursor):
+                continue
+            if widget.compare(first, ">=", end):
+                break
+            if widget.compare(first, ">", cursor):
+                parts.append(widget.get(cursor, first))
+            cursor = last
+        if widget.compare(cursor, "<", end):
+            parts.append(widget.get(cursor, end))
+        return "".join(parts)
 
     def _finish(self, message):
         """Re-enable recording after processing and show a final status.
@@ -466,7 +601,7 @@ class SpeechToTextApp(ctk.CTk):
         Args:
             lang (str): Pane key, ``"en"`` or ``"es"``.
         """
-        text = self.boxes[lang].get("1.0", "end-1c").strip()
+        text = self._pane_text(lang).strip()
         if not text:
             return
         self.clipboard_clear()
@@ -476,9 +611,13 @@ class SpeechToTextApp(ctk.CTk):
         self.after(1200, lambda: btn.configure(text="Copy"))
 
     def save_transcript(self):
-        """Save both panes to a UTF-8 ``.txt`` chosen via a file dialog."""
-        en = self.boxes["en"].get("1.0", "end-1c").strip()
-        es = self.boxes["es"].get("1.0", "end-1c").strip()
+        """Save both panes to a UTF-8 ``.txt`` chosen via a file dialog.
+
+        Unlike the copy paths, the saved file keeps the entry headers — it is
+        a record, so when each part was said is worth having.
+        """
+        en = self._pane_text("en", keep_stamps=True).strip()
+        es = self._pane_text("es", keep_stamps=True).strip()
         if not en and not es:
             messagebox.showerror("Nothing to save", "Both panes are empty.")
             return

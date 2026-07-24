@@ -1,15 +1,22 @@
-## Speech to Text v2.0.2 — critical fix: "Model failed to load" 🛠️
+## Speech to Text v2.1.0 — one entry per recording
 
-**If you downloaded v2.0.0 or v2.0.1, please update to this version.**
-Those builds showed *"Model failed to load: [WinError 3]"* at startup and
-could not transcribe. The cause was a packaging bug in how the app looked
-for GPU libraries inside the frozen build — fixed here, and covered by a
-regression test.
+Dictate, stop, dictate again — each recording now starts its **own entry**
+instead of running into the one before it. A blank line separates them, and
+a small gray header gives each entry a number and the time it was recorded
+(`#3 · 2:41 PM`; the date is added on the first entry of a day). Both panes
+use the same number and time for a given recording, so the English and
+Español sides line up. Numbering restarts at `#1` once both panes are empty.
 
-**New safeguard:** every release now runs a built-in self-test in CI — the
-actual shipped `SpeechToText.exe` must load the Whisper model and transcribe
-before the release can publish. You can run it yourself anytime:
-`SpeechToText.exe --selftest` (writes `selftest.log`, exit code 0 = healthy).
+This is the mini-mode workflow fix: dictate all afternoon from the pill,
+then open the window and see where each piece starts and when you said it.
+
+**The headers are for reading, not for pasting.** The **Copy** button,
+`Ctrl+C` on a selection, `Ctrl+X`, and auto-copy all leave them out — what
+lands on your clipboard is just the words. **Save transcript** is the
+exception and keeps them, since a saved `.txt` is a record of when things
+were said.
+
+Nothing else changed: same transcription, same speed, same privacy model.
 
 Windows builds remain **digitally signed** (verified publisher: Jose
 Mondragon, via Azure Trusted Signing) with SHA-256 `checksums.txt` attached.
@@ -24,6 +31,7 @@ Mondragon, via Azure Trusted Signing) with SHA-256 `checksums.txt` attached.
 
 **Install:** unzip → run `SpeechToText.exe`. The first launch downloads the
 speech model once (GPU ~3 GB, CPU ~460 MB); after that it starts in seconds.
+Upgrading from v2.0.x: unzip over your existing folder, the model stays put.
 
 ### What the app does
 
