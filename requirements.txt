@@ -5,8 +5,8 @@ customtkinter>=5.2.2
 faster-whisper>=1.1.0
 
 # Microphone capture
-sounddevice>=0.5.0
-numpy>=1.24
+sounddevice>=0.5.5
+numpy>=2.5.1
 
 # EN <-> ES translation (Google, free, no API key; only part that needs internet)
 deep-translator>=1.11.4
