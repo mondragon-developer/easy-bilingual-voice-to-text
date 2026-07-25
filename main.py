@@ -32,13 +32,21 @@ def selftest() -> int:
     from src.transcriber import Transcriber
 
     try:
+        # No window opens here, but the UI toolkit's bundled theme data is
+        # exactly what goes missing in a frozen build, and the transcriber
+        # check below would never touch it.
+        import customtkinter as ctk
+
+        ctk.set_default_color_theme("dark-blue")
+
         transcriber = Transcriber()
         device = transcriber.load()
         # One second of silence: exercises the full decode path.
         text, lang, prob, duration = transcriber.transcribe(
             np.zeros(16000, dtype=np.float32))
         _report(f"SELFTEST OK: model={transcriber.model_name} "
-                f"device={device} (text={text!r}, lang={lang})")
+                f"device={device} (text={text!r}, lang={lang}) "
+                f"ui=customtkinter {ctk.__version__}")
         return 0
     except Exception as exc:  # noqa: BLE001 - report anything that broke
         _report(f"SELFTEST FAIL: {type(exc).__name__}: {exc}")
