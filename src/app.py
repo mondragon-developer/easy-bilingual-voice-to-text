@@ -149,8 +149,12 @@ class SpeechToTextApp(ctk.CTk):
         )
         self.record_btn.grid(row=0, column=0, sticky="w")
 
+        # Its own row: the badge, meter and Mini button all want fixed width,
+        # so at the minimum window size the status was the one that gave —
+        # its cell ended up under the badge and the text read "…speaking (EN".
         self.status_lbl = ctk.CTkLabel(top, text="", font=UI_FONT, anchor="w")
-        self.status_lbl.grid(row=0, column=1, sticky="ew", padx=14)
+        self.status_lbl.grid(row=1, column=0, columnspan=5, sticky="ew",
+                             pady=(8, 0))
 
         self.lang_badge = ctk.CTkLabel(
             top, text="Detected: —", font=UI_FONT,
@@ -162,10 +166,11 @@ class SpeechToTextApp(ctk.CTk):
         self.level_meter.set(0)
         self.level_meter.grid(row=0, column=3, sticky="e")
 
-        ctk.CTkButton(top, text="🗕 Mini", width=70, height=32, font=UI_FONT,
-                      fg_color="#374151", hover_color="#4b5563",
-                      command=self.toggle_mini_mode
-                      ).grid(row=0, column=4, sticky="e", padx=(12, 0))
+        self.mini_btn = ctk.CTkButton(top, text="🗕 Mini", width=70, height=32,
+                                      font=UI_FONT, fg_color="#374151",
+                                      hover_color="#4b5563",
+                                      command=self.toggle_mini_mode)
+        self.mini_btn.grid(row=0, column=4, sticky="e", padx=(12, 0))
 
         # --- text panes ----------------------------------------------------
         self.boxes, self.pane_titles = {}, {}

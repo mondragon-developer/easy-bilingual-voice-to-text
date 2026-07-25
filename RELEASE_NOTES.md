@@ -1,15 +1,16 @@
-## Speech to Text v2.1.3 — bottom bar no longer overlaps itself
+## Speech to Text v2.1.4 — the top bar fits at any window size
 
-The status line at the bottom right (hotkeys, model, device) shares the
-window with the **Translate (online)** checkbox. Once that text grew long
-enough — hotkey hints plus the model name plus a device string like
-`GPU (CUDA, float16)` — it drew straight over the checkbox label and lost
-its own first characters: `Translate (online)rl+Alt+R: record anywhere…`
+Companion to v2.1.3, which fixed the same problem at the bottom of the
+window. Shrink the window toward its minimum and the status message used to
+run out of room and get cut off by the **Detected** badge, reading
+`Ready — press Record and start speaking (EN`.
 
-It now sits on its own line under the controls, right-aligned, which fits at
-any window size down to the minimum. Cosmetic only; nothing behaved wrongly.
+The Record button, badge, level meter and **Mini** button all need a fixed
+amount of space, so the status line was always the one that gave. It now has
+its own line under them and shows in full at every window size.
 
-Everything else is unchanged from v2.1.2.
+Cosmetic only; nothing behaved wrongly. Everything else is unchanged from
+v2.1.3.
 
 Windows builds remain **digitally signed** (verified publisher: Jose
 Mondragon, via Azure Trusted Signing) with SHA-256 `checksums.txt` attached,
