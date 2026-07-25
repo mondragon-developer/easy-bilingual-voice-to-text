@@ -1,5 +1,5 @@
 # UI
-customtkinter>=5.2.2
+customtkinter>=6.0.0
 
 # Speech to text (offline; GPU-accelerated where available)
 faster-whisper>=1.1.0
