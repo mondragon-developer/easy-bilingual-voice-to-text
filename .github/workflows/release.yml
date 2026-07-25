@@ -58,7 +58,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
-          python-version: "3.11"
+          # Single source of truth, and what Dependabot resolves pins against.
+          python-version-file: .python-version
       - run: pip install -r requirements.txt -r requirements-dev.txt
       # UI tests (tests/test_app.py) need an interactive desktop and run
       # locally; CI runs the logic suite.
@@ -75,7 +76,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
-          python-version: "3.11"
+          # Single source of truth, and what Dependabot resolves pins against.
+          python-version-file: .python-version
       # Lockfile = releases are built from exact, recorded versions AND
       # verified bytes. --require-hashes makes a hijacked re-upload to PyPI
       # fail the build instead of shipping inside a signed binary.
