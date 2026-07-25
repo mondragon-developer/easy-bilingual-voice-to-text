@@ -220,9 +220,13 @@ class SpeechToTextApp(ctk.CTk):
                         ).grid(row=0, column=2, sticky="w")
 
         bottom.grid_columnconfigure(3, weight=1)
+        # Its own row: hotkey hint + model + device runs long, and a Tk label
+        # does not clip to its cell — sharing row 0 let it draw over the
+        # Translate checkbox once the text outgrew the window width.
         self.device_lbl = ctk.CTkLabel(bottom, text="", font=("Segoe UI", 12),
                                        text_color="#9ca3af", anchor="e")
-        self.device_lbl.grid(row=0, column=3, sticky="e")
+        self.device_lbl.grid(row=1, column=0, columnspan=4, sticky="e",
+                             pady=(6, 0))
 
     def _attach_editing_helpers(self, box):
         """Add a right-click Cut/Copy/Paste menu and Ctrl+A to a textbox.

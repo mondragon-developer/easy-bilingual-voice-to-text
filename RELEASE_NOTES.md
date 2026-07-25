@@ -1,23 +1,15 @@
-## Speech to Text v2.1.2 — refreshed dependencies
+## Speech to Text v2.1.3 — bottom bar no longer overlaps itself
 
-A maintenance release. The app works the same; what ships inside it is newer.
+The status line at the bottom right (hotkeys, model, device) shares the
+window with the **Translate (online)** checkbox. Once that text grew long
+enough — hotkey hints plus the model name plus a device string like
+`GPU (CUDA, float16)` — it drew straight over the checkbox label and lost
+its own first characters: `Translate (online)rl+Alt+R: record anywhere…`
 
-**Sixteen dependencies updated**, including the UI toolkit (customtkinter
-5.2.2 → 6.0.0) and the numeric and HTTP stacks (numpy, requests, cffi,
-certifi, idna, filelock, soupsieve, tqdm, packaging, fsspec and others). The
-window may render at a slightly different size than v2.1.1 did — the new
-toolkit handles display scaling differently. Everything in it works the
-same; if it looks off on your monitor, say so and it gets fixed.
+It now sits on its own line under the controls, right-aligned, which fits at
+any window size down to the minimum. Cosmetic only; nothing behaved wrongly.
 
-Two updates were deliberately **not** taken: numpy 2.5.x needs Python 3.12
-and this app builds on 3.11, and mpmath 1.4 contradicts what sympy accepts.
-Both would have broken the build rather than the app.
-
-**The build self-check now covers the UI toolkit too.** Every release runs
-the shipped `SpeechToText.exe --selftest` in CI and refuses to publish if it
-fails; until now that check loaded the speech model but never touched the
-interface layer, so a packaging fault in the UI could have slipped past it.
-That gap is closed — the check that gates this release verified both.
+Everything else is unchanged from v2.1.2.
 
 Windows builds remain **digitally signed** (verified publisher: Jose
 Mondragon, via Azure Trusted Signing) with SHA-256 `checksums.txt` attached,
@@ -44,6 +36,10 @@ separated by a blank line and headed with its number and time
 and Español sides line up. The headers are for reading, not pasting —
 **Copy**, `Ctrl+C`, `Ctrl+X` and auto-copy all leave them out; **Save
 transcript** keeps them.
+
+**Refreshed dependencies (v2.1.2).** Sixteen packages updated, including the
+UI toolkit; the release self-check now covers the interface layer as well as
+the speech model.
 
 ### What the app does
 
