@@ -13,3 +13,9 @@ release/
 *.wav
 selftest.log
 speechtotextapp.py
+
+# Security-audit working files. findings.yaml lists open, unfixed issues by
+# severity and location — a to-do list for an attacker if published. Keep the
+# public policy in SECURITY.md instead.
+findings.yaml
+SECURITY_BASELINE.md

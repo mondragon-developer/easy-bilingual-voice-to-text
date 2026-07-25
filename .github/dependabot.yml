@@ -1,0 +1,25 @@
+# Keeps the pins fresh. Both ecosystems are pinned to exact versions (and
+# the lockfile to exact hashes), which is only safe if something updates
+# them — otherwise "pinned" quietly becomes "stale and vulnerable".
+version: 2
+updates:
+  # Action SHAs. A pin is what stops a hijacked tag from running inside the
+  # release job, which holds the code-signing secrets.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # requirements*.txt, including the hash-pinned lockfile that builds the
+  # released binaries. Dependabot regenerates the hashes with the bump.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      python-packages:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

@@ -144,6 +144,12 @@ The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs,
   (Azure Trusted Signing, verified publisher), built by GitHub Actions from
   the exact versions in `requirements-lock.txt` — the build logs are public
   in the Actions tab — and published with SHA-256 checksums.
+- **Supply chain:** `requirements-lock.txt` pins exact versions *and* artifact
+  hashes, installed with `--require-hashes`, so a hijacked re-upload to PyPI
+  fails the build rather than shipping inside a signed binary. Every GitHub
+  Action is pinned to a commit SHA instead of a movable tag, keeping a
+  compromised action away from the signing secrets. Dependabot updates both
+  weekly. To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Troubleshooting
 
@@ -189,6 +195,19 @@ Bump `__version__` in `src/__init__.py`, rewrite `RELEASE_NOTES.md` (it
 becomes the release body), and push to `main`. CI tests the code, builds and
 signs both Windows zips, self-tests the built exe, and publishes the release
 tagged with that version. Pushes that leave the version alone don't release.
+
+### Dependencies
+
+`requirements-lock.txt` is what release builds install, and it carries
+artifact hashes, so any version change has to be followed by:
+
+```bash
+python scripts/lock_hashes.py
+```
+
+That rewrites the file from the PyPI API. The pinned set must be the complete
+resolved closure — under `--require-hashes` pip refuses to install anything
+missing a pin, so a forgotten transitive dependency fails the release build.
 
 ## License
 
