@@ -82,6 +82,10 @@ macOS notes:
   without elevated permissions — the app detects this and simply disables
   them. In-app shortcuts (Ctrl+R / Ctrl+S) still work.
 
+A signed Mac download, working global hotkeys, and the rounded mini pill are
+planned — the steps, costs and order of work are written up in
+[MACOS_PLAN.md](MACOS_PLAN.md).
+
 ## How to use
 
 | Action | How |
