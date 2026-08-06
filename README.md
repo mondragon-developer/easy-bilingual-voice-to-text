@@ -3,10 +3,8 @@
 ![Tests](https://github.com/mondragon-developer/easy-bilingual-voice-to-text/actions/workflows/ci.yml/badge.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 
-Dictate in **English or Spanish** — the app auto-detects the language,
-transcribes it with OpenAI's Whisper model (running **locally on your
-machine**), and shows the text in **both languages** side by side. Both panes
-are fully editable with native copy/cut/paste.
+Dictate in **English or Spanish** — the app auto-detects the language, transcribes it with OpenAI's Whisper model (running **locally on your
+machine**), and shows the text in **both languages** side by side. Both panes are fully editable with native copy/cut/paste.
 
 ## Features
 
@@ -20,10 +18,7 @@ are fully editable with native copy/cut/paste.
 - 📋 **Auto-copy** — dictated text lands on your clipboard, ready to paste anywhere
 - 🔘 **Mini mode** — collapse to a tiny always-on-top pill at the screen edge
 - ⌨️ **Global hotkeys** (Windows) — record from inside any app
-- 🔒 **Private by design** — audio never leaves your computer. The translation
-  pane sends each recording's transcribed **text** (never audio) to Google
-  Translate; untick **Translate (online)** and nothing leaves your machine
-  at all
+- 🔒 **Private by design** — audio never leaves your computer. The translation pane sends each recording's transcribed **text** (never audio) to Google Translate; untick **Translate (online)** and nothing leaves your machine at all
 
 ## Install — Windows
 
@@ -33,18 +28,10 @@ are fully editable with native copy/cut/paste.
    - **`SpeechToText-Windows-GPU.zip`** (~1.5 GB) — for PCs with an NVIDIA GPU (much faster)
    - **`SpeechToText-Windows-CPU.zip`** (~95 MB) — for any Windows PC
 2. Unzip anywhere, open the folder, and run **`SpeechToText.exe`**.
-3. First launch downloads the speech model once (GPU build ~3 GB,
-   CPU build ~460 MB) — later launches start in seconds.
+3. First launch downloads the speech model once (GPU build ~3 GB, CPU build ~460 MB) — later launches start in seconds.
 
 > **✅ Signed for Windows:** releases from v2.0.1 onward are digitally signed
-> by verified publisher **Jose Mondragon** through Microsoft Azure Trusted
-> Signing — right-click `SpeechToText.exe` → *Properties → Digital
-> Signatures* to verify. Each release also ships a `checksums.txt` (SHA-256)
-> so you can confirm your download is byte-identical to what CI built.
-> If SmartScreen still shows a prompt on very new releases (reputation for
-> fresh signatures builds up over days), the publisher name shown is mine —
-> and the full source code is in this repository if you want to see exactly
-> what the app does.
+> by verified publisher **Jose Mondragon** through Microsoft Azure Trusted Signing — right-click `SpeechToText.exe` → *Properties → Digital Signatures* to verify. 
 
 ### Option B: Run from source
 
@@ -71,20 +58,11 @@ python3 main.py
 
 macOS notes:
 
-- **Microphone permission**: the first recording triggers a permission prompt
-  (or enable it in *System Settings → Privacy & Security → Microphone* for
-  your terminal/Python).
-- **Speed**: there is no NVIDIA CUDA on Mac, so transcription runs on CPU and
-  the app automatically selects the lighter `small` model. On Apple Silicon
-  it is fast enough for dictation. Prefer more accuracy? Run with
-  `STT_MODEL=medium python3 main.py`.
-- **Global hotkeys** (Ctrl+Alt+R from other apps) are not available on macOS
-  without elevated permissions — the app detects this and simply disables
-  them. In-app shortcuts (Ctrl+R / Ctrl+S) still work.
+- **Microphone permission**: the first recording triggers a permission prompt (or enable it in *System Settings → Privacy & Security → Microphone* for your terminal/Python).
+- **Speed**: there is no NVIDIA CUDA on Mac, so transcription runs on CPU and the app automatically selects the lighter `small` model. On Apple Silicon it is fast enough for dictation. Prefer more accuracy? Run with `STT_MODEL=medium python3 main.py`.
+- **Global hotkeys** (Ctrl+Alt+R from other apps) are not available on macOS without elevated permissions — the app detects this and simply disables them. In-app shortcuts (Ctrl+R / Ctrl+S) still work.
 
-A signed Mac download, working global hotkeys, and the rounded mini pill are
-planned — the steps, costs and order of work are written up in
-[MACOS_PLAN.md](MACOS_PLAN.md).
+A signed Mac download, working global hotkeys, and the rounded mini pill are planned.
 
 ## How to use
 
@@ -98,62 +76,36 @@ planned — the steps, costs and order of work are written up in
 | Auto-copy after dictation | Checkbox in the bottom bar (on by default) |
 | Translation on/off | **Translate (online)** checkbox — untick to stay 100% offline |
 
-**Dictate-anywhere workflow (Windows):** minimize to the pill →
-`Ctrl+Alt+R` → speak → `Ctrl+Alt+R` → wait for the green ✓ → `Ctrl+V` in
+**Dictate-anywhere workflow (Windows):** minimize to the pill → `Ctrl+Alt+R` → speak → `Ctrl+Alt+R` → wait for the green ✓ → `Ctrl+V` in
 whatever app you're writing in.
 
-Each recording **appends**: the spoken text goes to its language's pane and
-the translation to the other, so each pane always holds the full transcript
-in one language — even if you switch languages between recordings.
+Each recording **appends**: the spoken text goes to its language's pane and the translation to the other, so each pane always holds the full transcript in one language — even if you switch languages between recordings.
 
-Every recording is its own **entry**, set off by a blank line and a small
-gray header with a number and the time (`#3 · 2:41 PM`) — the date is added
-on the first entry of the day. Both panes use the same number and time for a
-given recording, so the two sides line up. Numbering restarts at `#1` once
-both panes are empty.
+Every recording is its own **entry**, set off by a blank line and a small gray header with a number and the time (`#3 · 2:41 PM`) — the date is added on the first entry of the day. Both panes use the same number and time for a given recording, so the two sides line up. Numbering restarts at `#1` once both panes are empty.
 
-The headers are for reading, not for pasting: **Copy**, `Ctrl+C` on a
-selection, `Ctrl+X`, and auto-copy all leave them out, so you paste only the
-words. **Save transcript** is the exception — the `.txt` file keeps the
-headers, since a saved transcript is a record of when things were said.
+The headers are for reading, not for pasting: **Copy**, `Ctrl+C` on a selection, `Ctrl+X`, and auto-copy all leave them out, so you paste only the
+words. **Save transcript** is the exception — the `.txt` file keeps the headers, since a saved transcript is a record of when things were said.
 
 ## Choosing a model
 
-The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs,
-`small` (fast) on CPU. Override with the `STT_MODEL` environment variable:
+The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs, `small` (fast) on CPU. Override with the `STT_MODEL` environment variable:
 `tiny`, `base`, `small`, `medium`, `large-v3`, `distil-large-v3`.
 
 ## Privacy & security
 
-- Speech recognition runs **100% locally** — your voice never leaves the machine.
-  Models are downloaded once over HTTPS from the official
+- Speech recognition runs **100% locally** — your voice never leaves the machine. Models are downloaded once over HTTPS from the official
   `huggingface.co/Systran/faster-whisper-*` repositories.
-- When **Translate (online)** is ticked (default), the latest recording's
-  **transcribed text** (never audio, never your edits) is sent to Google
-  Translate. No account, no API key. **Untick it and the app makes zero
-  network calls.**
-- **About the global hotkeys (Windows):** Ctrl+Alt+R / Ctrl+Alt+M are
-  implemented with the Python [`keyboard`](https://github.com/boppreh/keyboard)
-  library, which registers a system-wide keyboard hook — the standard
-  technique every hotkey utility uses, and one some antivirus tools flag
-  because keyloggers use hooks too. This app registers exactly two hotkey
-  patterns and **never reads, stores, or transmits keystrokes** — the entire
-  usage is ~10 lines in [`src/app.py`](src/app.py) (`_register_global_hotkeys`),
-  and the hook is released on exit. On macOS and Linux the hook needs
-  elevated permissions, so the app simply disables global hotkeys there.
+- When **Translate (online)** is ticked (default), the latest recording's **transcribed text** (never audio, never your edits) is sent to Google
+  Translate. No account, no API key. **Untick it and the app makes zero network calls.**
+- **About the global hotkeys (Windows):** Ctrl+Alt+R / Ctrl+Alt+M are implemented with the Python [`keyboard`](https://github.com/boppreh/keyboard)
+  library, which registers a system-wide keyboard hook — the standard technique every hotkey utility uses, and one some antivirus tools flag
+  because keyloggers use hooks too. This app registers exactly two hotkey patterns and **never reads, stores, or transmits keystrokes** — the        entire usage is ~10 lines in [`src/app.py`](src/app.py) (`_register_global_hotkeys`),
+  and the hook is released on exit. On macOS and Linux the hook needs elevated permissions, so the app simply disables global hotkeys there.
 - Auto-copy writes to your clipboard only when the checkbox is on.
-- No telemetry, no analytics, no accounts. Transcripts are saved only when
-  you click Save. Audio is never written to disk.
-- **Signed, reproducible releases:** Windows binaries are code-signed
-  (Azure Trusted Signing, verified publisher), built by GitHub Actions from
-  the exact versions in `requirements-lock.txt` — the build logs are public
-  in the Actions tab — and published with SHA-256 checksums.
-- **Supply chain:** `requirements-lock.txt` pins exact versions *and* artifact
-  hashes, installed with `--require-hashes`, so a hijacked re-upload to PyPI
-  fails the build rather than shipping inside a signed binary. Every GitHub
-  Action is pinned to a commit SHA instead of a movable tag, keeping a
-  compromised action away from the signing secrets. Dependabot updates both
-  weekly. To report a vulnerability, see [SECURITY.md](SECURITY.md).
+- No telemetry, no analytics, no accounts. Transcripts are saved only when you click Save. Audio is never written to disk.
+- **Signed, reproducible releases:** Windows binaries are code-signed (Azure Trusted Signing, verified publisher), built by GitHub Actions from
+  the exact versions in `requirements-lock.txt` — the build logs are public in the Actions tab — and published with SHA-256 checksums.
+- **Supply chain:** `requirements-lock.txt` pins exact versions *and* artifact hashes, installed with `--require-hashes`, so a hijacked re-upload    to PyPI fails the build rather than shipping inside a signed binary. Every GitHub Action is pinned to a commit SHA instead of a movable tag,       keeping a compromised action away from the signing secrets. Dependabot updates both weekly. To report a vulnerability.
 
 ## Troubleshooting
 
@@ -167,14 +119,9 @@ The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs,
 
 ### Verify your download
 
-- **Integrity:** compare your zip's SHA-256 against `checksums.txt` attached
-  to the release — `Get-FileHash SpeechToText-Windows-*.zip` in PowerShell.
-- **Authenticity:** right-click `SpeechToText.exe` → *Properties → Digital
-  Signatures* — the publisher is Jose Mondragon.
-- **Health:** run `SpeechToText.exe --selftest` — it loads the speech model
-  and transcribes a test signal without opening a window, writes
-  `selftest.log`, and exits with code 0 when everything works. CI runs this
-  exact check on every release before it can publish.
+- **Integrity:** compare your zip's SHA-256 against `checksums.txt` attached to the release — `Get-FileHash SpeechToText-Windows-*.zip` in     PowerShell.
+- **Authenticity:** right-click `SpeechToText.exe` → *Properties → Digital Signatures* — the publisher is Jose Mondragon.
+- **Health:** run `SpeechToText.exe --selftest` — it loads the speech model and transcribes a test signal without opening a window, writes `selftest.log`, and exits with code 0 when everything works. CI runs this exact check on every release before it can publish.
 
 ## Development
 
@@ -193,25 +140,15 @@ src/
 tests/               pytest suite (logic, recorder, transcriber, translator, UI)
 ```
 
-### Releasing
-
-Bump `__version__` in `src/__init__.py`, rewrite `RELEASE_NOTES.md` (it
-becomes the release body), and push to `main`. CI tests the code, builds and
-signs both Windows zips, self-tests the built exe, and publishes the release
-tagged with that version. Pushes that leave the version alone don't release.
-
 ### Dependencies
 
-`requirements-lock.txt` is what release builds install, and it carries
-artifact hashes, so any version change has to be followed by:
+`requirements-lock.txt` is what release builds install, and it carries artifact hashes, so any version change has to be followed by:
 
 ```bash
 python scripts/lock_hashes.py
 ```
 
-That rewrites the file from the PyPI API. The pinned set must be the complete
-resolved closure — under `--require-hashes` pip refuses to install anything
-missing a pin, so a forgotten transitive dependency fails the release build.
+That rewrites the file from the PyPI API. The pinned set must be the complete resolved closure — under `--require-hashes` pip refuses to install anything missing a pin, so a forgotten transitive dependency fails the release build.
 
 ## License
 
