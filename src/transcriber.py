@@ -80,8 +80,10 @@ class Transcriber:
 
         Tries ``large-v3`` on CUDA first; if no usable GPU is present, falls
         back to the lighter ``small`` model on CPU so the app stays responsive
-        on any machine. Set the ``STT_MODEL`` environment variable to force a
-        specific model on either device.
+        on any machine. macOS goes straight to CPU, since CUDA cannot exist
+        there and merely asking for it would download the large model first.
+        Set the ``STT_MODEL`` environment variable to force a specific model
+        on either device.
 
         Returns:
             str: Human-readable device label, e.g. ``"GPU (CUDA, float16)"``.
@@ -93,13 +95,23 @@ class Transcriber:
         override = os.environ.get("STT_MODEL")
         if override and override not in ALLOWED_MODELS:
             override = None  # unknown value: ignore and use the defaults
-        try:
-            self.model_name = override or MODEL_NAME
-            self.model = WhisperModel(self.model_name, device="cuda",
-                                      compute_type="float16")
-            self.device_label = "GPU (CUDA, float16)"
-        except Exception as exc:
-            self.gpu_error = str(exc)
+        # macOS never has CUDA, and WhisperModel downloads the weights before
+        # it initialises the device - so attempting the GPU path there would
+        # fetch all 3 GB of large-v3 only to discard it when the CUDA init
+        # fails. Skipping the attempt keeps a Mac's first launch to the CPU
+        # model alone. This is expected on a Mac, not a failure, so leave
+        # gpu_error unset: the UI reserves that for a GPU that should have
+        # worked and did not.
+        if sys.platform != "darwin":
+            try:
+                self.model_name = override or MODEL_NAME
+                self.model = WhisperModel(self.model_name, device="cuda",
+                                          compute_type="float16")
+                self.device_label = "GPU (CUDA, float16)"
+            except Exception as exc:
+                self.gpu_error = str(exc)
+
+        if self.model is None:
             self.model_name = override or CPU_MODEL_NAME
             self.model = WhisperModel(self.model_name, device="cpu",
                                       compute_type="int8")
