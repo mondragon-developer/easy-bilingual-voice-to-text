@@ -8,6 +8,17 @@ correctly spelled, which is what gives the app its precision.
 import os
 import re
 import sys
+import warnings
+
+if sys.platform == "darwin":
+    # NumPy on macOS links against Apple's Accelerate BLAS, which leaves the
+    # CPU's floating-point exception flags set after a matmul even when the
+    # result is fine. NumPy reads those flags and reports "divide by zero /
+    # overflow / invalid value encountered in matmul" for every mel-spectrogram
+    # the feature extractor computes. The transcript is unaffected; the warning
+    # is spurious, so keep it off the console instead of alarming the user.
+    warnings.filterwarnings("ignore", category=RuntimeWarning,
+                            module=r"faster_whisper\.feature_extractor")
 
 #: Model used when a CUDA GPU is available (best accuracy).
 MODEL_NAME = "large-v3"

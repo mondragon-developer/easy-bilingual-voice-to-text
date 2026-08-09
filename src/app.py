@@ -312,7 +312,17 @@ class SpeechToTextApp(ctk.CTk):
         self.bind("<Control-s>", lambda e: self.save_transcript())
 
     def _register_global_hotkeys(self):
-        """System-wide hotkeys: they work even when the app has no focus."""
+        """System-wide hotkeys: they work even when the app has no focus.
+
+        Windows only. On macOS the ``keyboard`` backend needs root, and it
+        fails inside its own listener thread - ``add_hotkey`` returns happily
+        and a traceback appears on stderr seconds later, so the failure cannot
+        be caught here. Not registering at all is the only clean way to keep
+        that traceback off the console.
+        """
+        if sys.platform != "win32":
+            self.hotkeys_ok = False
+            return
         try:
             import keyboard
             keyboard.add_hotkey(HOTKEY_RECORD,
@@ -678,11 +688,12 @@ class SpeechToTextApp(ctk.CTk):
         """Clean up (mic stream, global hotkeys) and close the app."""
         if self.recorder.is_recording:
             self.recorder.stop()
-        try:
-            import keyboard
-            keyboard.unhook_all_hotkeys()
-        except Exception:
-            pass
+        if self.hotkeys_ok:
+            try:
+                import keyboard
+                keyboard.unhook_all_hotkeys()
+            except Exception:
+                pass
         self.destroy()
 
 
