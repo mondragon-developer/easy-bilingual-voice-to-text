@@ -1,3 +1,3 @@
-"""Speech to Text v2 — bilingual EN/ES dictation with Whisper."""
+"""Speech to Text v2 - bilingual EN/ES dictation with Whisper."""
 
-__version__ = "2.1.4"
+__version__ = "2.1.5"
