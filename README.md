@@ -56,11 +56,53 @@ python3 -m pip install -r requirements.txt
 python3 main.py
 ```
 
-macOS notes:
+> **⚠️ Do not use Apple's built-in `python3`.** The `/usr/bin/python3` that
+> ships with macOS is Python 3.9 bundled with **Tk 8.5**, which no longer
+> works on recent macOS: the window opens and then stays blank, a black
+> rectangle that never paints. Nothing in the app can work around it. If you
+> see the startup warning `The system version of Tk is deprecated`, you are
+> on that Python. Install a real one first (see below), then use it for both
+> the `pip install` and the `main.py` commands above.
 
-- **Microphone permission**: the first recording triggers a permission prompt (or enable it in *System Settings → Privacy & Security → Microphone* for your terminal/Python).
-- **Speed**: there is no NVIDIA CUDA on Mac, so transcription runs on CPU and the app automatically selects the lighter `small` model. On Apple Silicon it is fast enough for dictation. Prefer more accuracy? Run with `STT_MODEL=medium python3 main.py`.
-- **Global hotkeys** (Ctrl+Alt+R from other apps) are not available on macOS without elevated permissions — the app detects this and simply disables them. In-app shortcuts (Ctrl+R / Ctrl+S) still work.
+### Getting a Python that works
+
+Either option installs alongside Apple's and leaves `/usr/bin/python3` untouched.
+
+**Option A: python.org installer** (needs an admin password)
+
+Download the macOS 64-bit universal2 installer for Python 3.12 from
+[python.org/downloads/macos](https://www.python.org/downloads/macos/), run it,
+then use `python3.12` instead of `python3`:
+
+```bash
+python3.12 -m pip install -r requirements.txt
+python3.12 main.py
+```
+
+**Option B: no admin rights needed**
+
+```bash
+mkdir -p ~/.local/pythons && cd ~/.local/pythons
+curl -sSL -o cpython.tar.gz https://github.com/astral-sh/python-build-standalone/releases/download/20260807/cpython-3.12.13%2B20260807-aarch64-apple-darwin-install_only.tar.gz
+tar xzf cpython.tar.gz && mv python python-3.12.13
+```
+
+Then run everything with `~/.local/pythons/python-3.12.13/bin/python3.12`.
+(That URL is for Apple Silicon; swap `aarch64` for `x86_64` on an Intel Mac.)
+
+To confirm you are on a good one, this must print **8.6 or higher** and open a
+window that actually draws a button:
+
+```bash
+python3.12 -c "import tkinter; print(tkinter.TkVersion); tkinter.Button(tkinter.Tk(), text='ok').pack(); tkinter.mainloop()"
+```
+
+### macOS notes
+
+- **Microphone permission**: the first recording triggers a permission prompt (or enable it in *System Settings > Privacy & Security > Microphone* for your terminal/Python).
+- **Speed**: there is no NVIDIA CUDA on Mac, so transcription runs on CPU and the app automatically selects the lighter `small` model. Measured on an M5 Pro, that transcribes roughly **7x faster than real time**: about 2 seconds for a 14-second dictation, with punctuation, accents and EN/ES detection all correct.
+- **`small` is the right default.** `STT_MODEL=medium` is roughly 3x slower for identical output on clean dictation. Reach for it only if the app keeps mishearing you on hard audio (strong accent, background noise, unusual technical vocabulary).
+- **Global hotkeys** (Ctrl+Alt+R from other apps) are not available on macOS without running as root, so the app skips them entirely there. In-app shortcuts (Ctrl+R / Ctrl+S) still work.
 
 A signed Mac download, working global hotkeys, and the rounded mini pill are planned.
 
