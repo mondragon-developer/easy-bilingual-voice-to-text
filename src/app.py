@@ -26,6 +26,7 @@ dictate into any application: hotkey -> speak -> hotkey -> paste (the spoken
 text is auto-copied to the clipboard when Auto-copy is on).
 """
 
+import queue
 import sys
 import threading
 import time
@@ -61,6 +62,10 @@ STAMP_TAG = "stamp"          # marks entry headers, which no copy path emits
 HOTKEY_RECORD = "ctrl+alt+r"
 HOTKEY_MINI = "ctrl+alt+m"
 
+#: How often the main loop picks up work queued by the worker threads. Short
+#: enough to read as instant, long enough not to busy-poll an idle app.
+UI_POLL_MS = 16
+
 
 def _asset_path(name: str) -> str:
     """Absolute path to a bundled asset file.
@@ -83,7 +88,8 @@ class SpeechToTextApp(ctk.CTk):
 
     All heavy work (model loading, transcription, translation) runs on
     daemon worker threads; results are marshalled back to the Tk main loop
-    with ``after()`` so the UI never freezes.
+    through ``_ui``/``_drain_ui_queue`` so the UI never freezes and no
+    thread but the main one ever calls into Tk.
     """
 
     def __init__(self):
@@ -106,11 +112,19 @@ class SpeechToTextApp(ctk.CTk):
         self._stamped = set()             # panes already headed for this entry
         self.autocopy_var = tk.BooleanVar(value=True)
         self.translate_var = tk.BooleanVar(value=True)
+        self._ui_queue = queue.Queue()    # worker thread -> main loop callbacks
+        # Whichever thread built the window owns the Tcl interpreter; only it
+        # may call into Tk. Recorded rather than assumed to be the main thread.
+        self._ui_thread = threading.current_thread()
 
         self._build_ui()
         self._bind_shortcuts()
         self._register_global_hotkeys()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        # Start draining before any worker exists, so nothing can be queued
+        # with no pump running to pick it up.
+        self._drain_ui_queue()
 
         # Load the Whisper model on a worker thread so the window opens instantly.
         self._set_status("Loading Whisper model… (first run downloads it, one time)")
@@ -670,19 +684,53 @@ class SpeechToTextApp(ctk.CTk):
         self.status_lbl.configure(text=message)
 
     def _ui(self, callback, *args):
-        """Schedule a callback on the Tk main loop from any thread.
+        """Hand a callback to the Tk main loop from any thread.
 
-        Safe to call after the window has been closed (the update is
-        silently dropped), which lets worker threads finish gracefully.
+        Tkinter is not thread safe. Calling ``after()`` straight from a
+        worker races the main thread inside the Tcl interpreter and can
+        segfault the process - most visibly when the model-load thread
+        finishes while the main loop is mid-redraw. So workers only append
+        to a queue here, and ``_drain_ui_queue`` (which always runs on the
+        main loop) is the single place that touches Tk.
+
+        Callers already on the Tk thread skip the queue: ``after()`` is only
+        unsafe from *another* thread, and going straight through keeps the
+        original scheduling for the code paths that never had a problem.
+
+        Safe to call after the window has been closed: the callback is
+        queued and simply never drained, which lets workers finish cleanly.
 
         Args:
             callback: Callable to run on the main loop.
             *args: Positional arguments for the callback.
         """
+        if threading.current_thread() is self._ui_thread:
+            try:
+                self.after(0, callback, *args)
+            except (RuntimeError, tk.TclError):
+                pass  # window already destroyed - nothing to update
+            return
+        self._ui_queue.put((callback, args))
+
+    def _drain_ui_queue(self):
+        """Run whatever the workers have queued, then reschedule.
+
+        Runs on the Tk main loop only, which is what makes the callbacks
+        safe to execute.
+        """
+        while True:
+            try:
+                callback, args = self._ui_queue.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                callback(*args)
+            except tk.TclError:
+                pass  # widget went away mid-update - nothing left to draw on
         try:
-            self.after(0, callback, *args)
+            self.after(UI_POLL_MS, self._drain_ui_queue)
         except (RuntimeError, tk.TclError):
-            pass  # window already destroyed — nothing to update
+            pass  # window destroyed - stop pumping
 
     def _on_close(self):
         """Clean up (mic stream, global hotkeys) and close the app."""
