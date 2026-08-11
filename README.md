@@ -47,12 +47,46 @@ drivers; otherwise the app automatically uses CPU mode.
 
 ## Install - macOS
 
-There is no Mac download on the Releases page yet (a signed/notarized `.app` is
-planned), so macOS runs from source. It takes three steps, and **step 1 is not
-optional** - skipping it is the one mistake that makes the app open a black
-window with no error to explain it.
+### Option A: Download (no Python needed)
 
-### Step 1 - get a Python that works
+1. Go to [**Releases**](../../releases) and download
+   **`SpeechToText-macOS-AppleSilicon.dmg`** (~75 MB).
+2. Open it and drag **SpeechToText** onto **Applications**.
+3. macOS will refuse to open it the first time, because the app is not signed
+   by Apple. See below - it is two clicks, once.
+4. First launch downloads the speech model once (~460 MB); later launches start
+   in seconds.
+
+The app brings its own Python and its own Tk, so **none of the Python setup in
+Option B applies to it** - that is the whole point of the download.
+
+> **⚠️ Apple Silicon only.** M1 and later. PyInstaller cannot cross-compile, so
+> an Intel Mac needs Option B for now.
+
+> **⚠️ Unsigned, so Gatekeeper will block it.** Signing an app for macOS needs a
+> paid Apple Developer account, which this project does not have yet. Nothing is
+> wrong with the download; macOS simply cannot tell who built it. To allow it:
+>
+> - **macOS 15 Sequoia and later:** double-click the app, accept the refusal,
+>   then open *System Settings > Privacy & Security*, scroll to the message
+>   about SpeechToText, and click **Open Anyway**.
+> - **macOS 14 and earlier:** right-click the app > **Open** > **Open**.
+>
+> You do this once. If you would rather not run unsigned software, Option B
+> builds the identical app from source on your own machine.
+
+Verify the download against `checksums.txt` on the release page:
+
+```bash
+shasum -a 256 ~/Downloads/SpeechToText-macOS-AppleSilicon.dmg
+```
+
+### Option B: Run from source
+
+Three steps, and **step 1 is not optional** - skipping it is the one mistake
+that makes the app open a black window with no error to explain it.
+
+#### Step 1 - get a Python that works
 
 > **⚠️ Do not use Apple's built-in `python3`.** The `/usr/bin/python3` that
 > ships with macOS is Python 3.9 bundled with **Tk 8.5**, which no longer
@@ -64,7 +98,7 @@ window with no error to explain it.
 Pick either option below. Both install *alongside* Apple's Python and leave
 `/usr/bin/python3` untouched.
 
-**Option A: python.org installer** (needs an admin password)
+**Either: the python.org installer** (needs an admin password)
 
 Download the macOS 64-bit universal2 installer for Python 3.12 from
 [python.org/downloads/macos](https://www.python.org/downloads/macos/) and run
@@ -74,7 +108,7 @@ it. Your interpreter is then:
 PY=python3.12
 ```
 
-**Option B: no admin password needed**
+**Or: a local copy, no admin password needed**
 
 ```bash
 mkdir -p ~/.local/pythons && cd ~/.local/pythons
@@ -98,7 +132,7 @@ $PY -c "import tkinter; print(tkinter.TkVersion); tkinter.Button(tkinter.Tk(), t
 
 If it prints `8.5`, or the window is blank, you are still on the wrong Python.
 
-### Step 2 - install and run
+#### Step 2 - install and run
 
 With `$PY` set from step 1, in the same terminal:
 
@@ -117,7 +151,7 @@ everything works without opening a window:
 $PY main.py --selftest      # prints SELFTEST OK and exits 0
 ```
 
-### Step 3 - make it one word (optional)
+#### Step 3 - make it one word (optional)
 
 `$PY` only lasts as long as that terminal, and typing the full path every time
 gets old. Add an alias so the right Python is baked in:
@@ -128,12 +162,11 @@ echo "alias stt='$PY $PWD/main.py'" >> ~/.zshrc && source ~/.zshrc
 
 Now `stt` launches the app from anywhere.
 
-### Which version am I on?
+#### Which version am I on?
 
 Running from source means you get whatever `git clone` gave you - the tip of
 `main`, which is at or ahead of the newest tag on the
-[Releases](../../releases) page (those zips are Windows-only). To see what you
-have, and to update:
+[Releases](../../releases) page. To see what you have, and to update:
 
 ```bash
 $PY -c "import src; print(src.__version__)"    # e.g. 2.1.5
@@ -151,7 +184,8 @@ every Mac and could crash on startup.
 - **`small` is the right default.** `STT_MODEL=medium` is roughly 3x slower for identical output on clean dictation. Reach for it only if the app keeps mishearing you on hard audio (strong accent, background noise, unusual technical vocabulary).
 - **Global hotkeys** (Ctrl+Alt+R from other apps) are not available on macOS without running as root, so the app skips them entirely there. In-app shortcuts (Ctrl+R / Ctrl+S) still work.
 
-A signed Mac download, working global hotkeys, and the rounded mini pill are planned.
+A *signed* Mac download (no Gatekeeper warning), an Intel build, working global
+hotkeys, and the rounded mini pill are all still planned.
 
 ## How to use
 
@@ -200,7 +234,8 @@ The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs, `small` 
 
 | Problem | Fix |
 |---|---|
-| **macOS: the window opens but stays black** | You are on Apple's `/usr/bin/python3` (Tk 8.5). See [Install - macOS](#install---macos) step 1 |
+| **macOS: "cannot be opened because Apple cannot check it"** | Expected - the `.dmg` is unsigned. *System Settings > Privacy & Security > Open Anyway*, or right-click > Open on macOS 14 and earlier |
+| **macOS: the window opens but stays black** | Only happens running from source on Apple's `/usr/bin/python3` (Tk 8.5). See [Install - macOS](#install---macos) Option B step 1, or just download the `.dmg` |
 | **macOS: nothing happens for several minutes on first launch** | On v2.1.4 and earlier, every Mac downloaded 3 GB it could not use. `git pull` to 2.1.5+, then `rm -rf ~/.cache/huggingface/hub/models--Systran--faster-whisper-large-v3` |
 | "Could not open the microphone" | Check the OS default input device and mic permissions |
 | Status says CPU but I have an NVIDIA GPU | Update NVIDIA drivers; the status bar shows the exact CUDA error |
@@ -229,7 +264,15 @@ src/
   translator.py      EN<->ES translation with sentence-aware chunking
   app.py             CustomTkinter two-pane UI, mini mode, global hotkeys
 tests/               pytest suite (logic, recorder, transcriber, translator, UI)
+scripts/
+  build_release.ps1  Windows: PyInstaller -> the two release zips
+  build_macos.sh     macOS: PyInstaller -> .app -> .dmg (unsigned)
+  lock_hashes.py     regenerates requirements-lock.txt from the PyPI API
 ```
+
+Both build scripts take a stage argument so CI can sign between building and
+packaging, and both are what the release workflow actually runs - there is no
+separate CI-only build path to drift out of sync.
 
 ### Dependencies
 
