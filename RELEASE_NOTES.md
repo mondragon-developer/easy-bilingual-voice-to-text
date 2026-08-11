@@ -37,7 +37,7 @@ affects Windows too** and is the reason to take this release.
 Tk 8.5, and on recent macOS Tk 8.5 never completes a redraw: the window
 opens and stays a blank black rectangle. Four lines of plain `tkinter`
 reproduce it with none of this project involved, so there is nothing the app
-can do about it. The [README](README.md#install--macos) now says so up front
+can do about it. The [README](README.md#install---macos) now says so up front
 and gives two ways to install a Python that works, one of which needs no
 admin password.
 
