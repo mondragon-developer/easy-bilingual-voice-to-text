@@ -54,6 +54,18 @@ def selftest() -> int:
 
 
 if __name__ == "__main__":
+    # A frozen build re-launches this same executable to create multiprocessing
+    # helpers - on macOS, the resource tracker. PyInstaller's runtime hook
+    # recognises those launches and runs the helper instead of the app, but it
+    # can only do so from inside freeze_support(). Without this call each helper
+    # starts the whole app again and spawns another helper, so the .app
+    # fork-bombs instead of exiting. Measured: 71 processes from one launch.
+    #
+    # This has to come first, before the --selftest check: a helper's argv holds
+    # the interpreter flags and -c command, none of the arguments below.
+    import multiprocessing
+    multiprocessing.freeze_support()
+
     if "--selftest" in sys.argv:
         sys.exit(selftest())
 
