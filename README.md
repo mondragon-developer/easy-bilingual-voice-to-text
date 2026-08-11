@@ -6,6 +6,15 @@
 Dictate in **English or Spanish** - the app auto-detects the language, transcribes it with OpenAI's Whisper model (running **locally on your
 machine**), and shows the text in **both languages** side by side. Both panes are fully editable with native copy/cut/paste.
 
+![The app after two dictations, one spoken in English and one in Spanish](assets/screenshot-main.png)
+
+Two recordings above: the first spoken in English, the second in Spanish. Each
+one lands in its own language's pane and is translated into the other, so both
+panes always hold the whole conversation in one language. Every recording gets
+its own numbered entry (`#1`, `#2`) with the time, and the date appears on the
+first entry of the day. Those headers are for reading only - they are never
+copied or pasted.
+
 ## Features
 
 - 🎙️ **Auto language detection** - speak EN or ES, no switch to flip
@@ -198,6 +207,19 @@ hotkeys, and the rounded mini pill are all still planned.
 | Edit text | Click and type; right-click for Cut/Copy/Paste; `Ctrl+Z` undo |
 | Auto-copy after dictation | Checkbox in the bottom bar (on by default) |
 | Translation on/off | **Translate (online)** checkbox - untick to stay 100% offline |
+
+### Mini mode
+
+Press **🗕 Mini** and the window collapses to a small always-on-top pill:
+record button, level meter, and a restore button. It stays above every other
+window and you can **drag it anywhere on screen**, so you can dictate straight
+into whatever you are writing without giving up the space a full window takes.
+
+![The mini pill floating over the desktop](assets/screenshot-mini.png)
+
+Right-click the pill for *Restore window* or *Exit app*. On macOS it sits on a
+dark rectangle, as above; the rounded, fully transparent version is Windows
+only for now.
 
 **Dictate-anywhere workflow (Windows):** minimize to the pill → `Ctrl+Alt+R` → speak → `Ctrl+Alt+R` → wait for the green ✓ → `Ctrl+V` in
 whatever app you're writing in.

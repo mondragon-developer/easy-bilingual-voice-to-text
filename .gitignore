@@ -3,6 +3,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+# macOS Finder droppings (a mounted .dmg is enough to create one)
+.DS_Store
+
 # PyInstaller build output
 build/
 dist/
