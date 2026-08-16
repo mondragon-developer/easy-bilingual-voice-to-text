@@ -65,8 +65,10 @@ Apple M-something. If it says Intel, use Option B instead.
 1. Go to [**Releases**](../../releases/latest) and download
    **`SpeechToText-macOS-AppleSilicon.dmg`** (~81 MB).
 2. Open it and drag **SpeechToText** onto **Applications**.
-3. Open it from Applications. macOS will refuse the first time, because the app
-   is not signed by Apple. See below - it is two clicks, once.
+3. Open it from Applications. **macOS will refuse the first time** and say it
+   "could not verify" the app. That is expected, not a broken download. See
+   [macOS will block the first launch](#macos-will-block-the-first-launch)
+   just below, then come back here.
 4. Click **Allow** when macOS asks for the microphone. Without it the app can
    record nothing.
 5. First launch downloads the speech model once (~460 MB); later launches start
@@ -78,17 +80,44 @@ Option B applies to it** - that is the whole point of the download.
 > **Why no Intel build?** PyInstaller cannot cross-compile, so an Intel `.dmg`
 > needs an Intel machine to build it. Option B works there today.
 
-> **⚠️ Unsigned, so Gatekeeper will block it.** Signing an app for macOS needs a
-> paid Apple Developer account, which this project does not have yet. Nothing is
-> wrong with the download; macOS simply cannot tell who built it. To allow it:
->
-> - **macOS 15 Sequoia and later:** double-click the app, accept the refusal,
->   then open *System Settings > Privacy & Security*, scroll to the message
->   about SpeechToText, and click **Open Anyway**.
-> - **macOS 14 and earlier:** right-click the app > **Open** > **Open**.
->
-> You do this once. If you would rather not run unsigned software, Option B
-> builds the identical app from source on your own machine.
+#### macOS will block the first launch
+
+⚠️ You will see this, and it does **not** mean the download is broken:
+
+> Apple could not verify "SpeechToText" is free of malware that may harm your
+> Mac or compromise your privacy.
+
+Your browser flags anything downloaded from the web, and macOS then looks for
+an Apple notarization ticket. This app does not have one, because notarizing
+requires a paid Apple Developer account this project does not have yet. macOS
+cannot tell who built the app, so it refuses. You allow it once and never see
+it again.
+
+**On macOS 15 Sequoia and newer** (including macOS 26):
+
+1. Double-click the app and click **Done** on the refusal. Do *not* click
+   *Move to Trash*.
+2. Open *System Settings > Privacy & Security* and scroll down to the message
+   about SpeechToText.
+3. Click **Open Anyway** and authenticate.
+4. **Open the app again.** This second launch is the one that works.
+
+Step 4 is the one people miss: *Open Anyway* only grants permission for the
+next attempt, it does not start the app.
+
+> **Right-click > Open no longer works on macOS 15 and newer.** Apple removed
+> that shortcut. On **macOS 14 and earlier** it is still the quickest route:
+> right-click the app > **Open** > **Open**.
+
+**Or, in one command**, which does the same thing by removing the download
+flag your browser attached:
+
+```bash
+xattr -d com.apple.quarantine /Applications/SpeechToText.app
+```
+
+If you would rather not run unsigned software at all, Option B builds the
+identical app from source on your own machine.
 
 Verify the download against `checksums.txt` on the release page:
 
@@ -262,7 +291,8 @@ The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs, `small` 
 
 | Problem | Fix |
 |---|---|
-| **macOS: "cannot be opened because Apple cannot check it"** | Expected - the `.dmg` is unsigned. *System Settings > Privacy & Security > Open Anyway*, or right-click > Open on macOS 14 and earlier |
+| **macOS: "Apple could not verify SpeechToText is free of malware"** | Expected - the app is not notarized. *System Settings > Privacy & Security > Open Anyway*, **then launch the app a second time**. Full steps: [macOS will block the first launch](#macos-will-block-the-first-launch) |
+| **macOS: I clicked Open Anyway and nothing happened** | Correct behaviour - it only grants permission. Open the app again yourself |
 | **macOS: the window opens but stays black** | Only happens running from source on Apple's `/usr/bin/python3` (Tk 8.5). See [Install - macOS](#install---macos) Option B step 1, or just download the `.dmg` |
 | **macOS: nothing happens for several minutes on first launch** | On v2.1.4 and earlier, every Mac downloaded 3 GB it could not use. `git pull` to 2.1.5+, then `rm -rf ~/.cache/huggingface/hub/models--Systran--faster-whisper-large-v3` |
 | "Could not open the microphone" | Check the OS default input device and mic permissions |
