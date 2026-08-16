@@ -291,6 +291,120 @@ itself. One thing draws, so nothing collides.
 
 ---
 
+## The listening brain: what it is, and where it came from
+
+This section is for the reader who wants to know what is actually inside. It is
+the one genuinely technical part, kept as plain as the subject allows.
+
+### It is called Whisper, and it is OpenAI's
+
+Whisper was built and released by **OpenAI in September 2022**. Two things came
+out at once, which is unusual: the *code* **and** the *trained model itself*.
+Plenty of "open" AI publishes the recipe but keeps the cake. Whisper published
+both, under the **MIT licence** - the most permissive there is. Anyone may use
+it, change it, and ship it inside a product, commercially, for free, forever.
+
+That licence cannot be taken back for a version already released. Whatever
+OpenAI does next, the copy on your disk keeps working.
+
+**Why give it away?** Most likely because speech recognition was already a
+commodity - Google, Apple and Amazon all had one - so there was little revenue
+to protect, and a free excellent recognizer makes the expensive things OpenAI
+*does* sell more useful. The result is that a small open-source project can
+have world-class dictation without paying anyone.
+
+### How it turns sound into words
+
+Roughly three steps:
+
+1. **The sound becomes a picture.** Your audio is cut into 30-second windows
+   and converted to a *spectrogram* - a chart of which frequencies are loud at
+   each instant. Think sheet music rather than a wiggly waveform.
+2. **One half reads the whole picture.** A part called the **encoder** looks at
+   all 30 seconds at once and builds an internal summary of what it heard.
+3. **The other half writes it out.** The **decoder** produces text one small
+   piece at a time, each time looking at both that summary and everything it
+   has already written.
+
+Step 3 is why it punctuates well and spells names correctly. It is not matching
+sounds against a dictionary - it is **predicting the most likely next piece of
+text**, with the audio as context, much the way a phone keyboard predicts your
+next word but far better. It writes "their" rather than "there" because the
+sentence so far makes it more likely.
+
+It learned all this from **680,000 hours** of audio collected from the web
+together with its existing captions, in about 99 languages. That messy,
+multilingual diet is exactly why it copes with accents and switching languages
+mid-sentence, and why detecting the language is free: it was trained to predict
+which language a clip was, alongside the words. That prediction is the
+percentage you see in the app's badge.
+
+### Where the files actually come from
+
+The app does not use OpenAI's original code. It uses **faster-whisper**, a
+rebuild by a company called SYSTRAN that runs several times quicker on the same
+computer and uses less memory. Also MIT-licensed. Same Whisper model
+underneath, stored more efficiently.
+
+The model files are downloaded from **Hugging Face**, the standard public host
+for open AI models - think GitHub, but for trained models rather than code.
+Verified as of August 2026:
+
+| What the app asks for | Which public repository it downloads from |
+|---|---|
+| `small`, `medium`, `large-v3` | `Systran/faster-whisper-...` |
+| `large-v3-turbo` | `mobiuslabsgmbh/faster-whisper-large-v3-turbo` |
+
+They land in a shared folder on your computer (`~/.cache/huggingface`) and stay
+there, so the download happens once per model, ever.
+
+### What you get by default
+
+You do not choose a model. The app picks one, based on whether your computer
+has a graphics card it can use:
+
+| Your computer | Model | Runs on | One-time download |
+|---|---|---|---|
+| Windows PC with an **NVIDIA graphics card** | `large-v3` | the graphics card | ~2.9 GB |
+| Any other Windows PC | `small` | the main processor | ~464 MB |
+| Any **Mac** | `small` | the main processor | ~464 MB |
+
+Macs never try the graphics-card path at all. That is deliberate: the software
+downloads a model *before* it checks whether the graphics card will work, so
+merely asking would pull nearly 3 GB and then throw it away. Skipping the
+question saves every Mac user that download.
+
+**Is `small` a compromise?** For English, measurably not. On a test clip, the
+`small`, `medium` and largest models produced **byte-for-byte identical**
+English text - the small one just did it three times faster. For Spanish there
+is a real but narrow difference: `small` writes every word correctly but drops
+the accent in *Mondragón* and the opening **¿** on questions. If that matters
+to you, the README has a section called *Better Spanish* with a double-click
+fix on Windows and one command on Mac.
+
+### Can it be updated later?
+
+Yes, and in three independent ways - none of which requires rebuilding the app:
+
+1. **Pick a different model** with the `STT_MODEL` setting. Nothing is
+   recompiled; the new model downloads itself the first time.
+2. **Change the built-in default** by editing two lines in
+   `src/transcriber.py`.
+3. **Upgrade the engine** by bumping `faster-whisper` in the requirements file.
+   An automated service already checks weekly for updates.
+
+Only a fixed list of model names is accepted. That is a safety measure: without
+it, that setting could be pointed at *any* repository on Hugging Face, which
+would be a way to make the app download something it should not. Models known
+to be English-only are deliberately kept off the list too, because on a
+bilingual app they would quietly mangle Spanish rather than refuse it.
+
+**Is there anything better than Whisper?** As of writing, not for this
+particular job. The strongest rivals are either English-only or carry licences
+forbidding commercial use - each of which would break something this app
+promises. The faster "turbo" version of Whisper was tested here and turned out
+to be *slower* on an ordinary processor, so it was not adopted.
+
 ## Honest limits
 
 A description that only lists strengths is an advertisement. These are the real

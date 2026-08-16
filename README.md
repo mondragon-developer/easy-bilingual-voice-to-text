@@ -245,6 +245,58 @@ every Mac and could crash on startup.
 A *signed* Mac download (no Gatekeeper warning), an Intel build, working global
 hotkeys, and the rounded mini pill are all still planned.
 
+## Better Spanish, if you dictate mostly in Spanish
+
+**You probably do not need this.** Out of the box the app spells every Spanish
+word correctly. What it misses on some computers is two bits of Spanish
+punctuation: the accent on a name like **Mondragón**, and the opening **¿** on
+a question. If that does not bother you, skip this section.
+
+Whether you are affected depends on the computer, not on anything you chose:
+
+| Your computer | Spanish accents and `¿` |
+|---|---|
+| A Windows PC with an **NVIDIA graphics card** | **Already correct.** Nothing to do. |
+| Any other Windows PC | Missing - see below |
+| Any Mac | Missing - see below |
+
+### On Windows
+
+Your download already includes the fix. In the app's folder, next to
+`SpeechToText.exe`, there is a file called **`Modo espanol.bat`**.
+**Double-click that instead of the usual app.** That is the whole change.
+
+The first time, it downloads a larger speech model (about 1.4 GB) and then
+starts normally every time after. It is about three times slower to transcribe
+- a few seconds rather than one or two - in exchange for correct Spanish
+punctuation.
+
+To go back to normal, just open `SpeechToText.exe` as usual. Nothing is
+permanently changed, and both share the same window and settings.
+
+### On Mac
+
+There is no double-click version yet, so this one needs the Terminal. Copy this
+line, paste it into Terminal, and press Return:
+
+```bash
+open --env STT_MODEL=medium -a SpeechToText
+```
+
+That starts the app once with the better Spanish model. The next time you open
+the app normally, it goes back to the faster one. If you want it every time,
+add `export STT_MODEL=medium` to your `~/.zshrc`.
+
+To check it worked, look at the small grey text in the bottom-right of the
+window: it should say **`Whisper medium`** rather than `Whisper small`.
+
+### Why is this not just the default?
+
+Because on English the two produce **byte-identical** text - we measured it -
+so making it the default would make every English speaker wait three times as
+long for exactly the same words. See the measurements in
+[macOS notes](#macos-notes) above.
+
 ## How to use
 
 | Action | How |

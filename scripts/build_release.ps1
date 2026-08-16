@@ -39,8 +39,18 @@ function New-Zip($src, $dest) {
     }
 }
 
+# Only the CPU build gets the Spanish launcher. The GPU build already runs
+# large-v3, which writes Spanish correctly, so switching it to medium would be
+# a downgrade. Added before the CPU zip and removed before the GPU zip, because
+# both zips are made from this same folder.
+$spanishLauncher = "$proj\dist\SpeechToText\Modo espanol.bat"
+Write-Output "Adding the Spanish launcher to the CPU build..."
+Copy-Item "$proj\scripts\launch_spanish.bat" $spanishLauncher -Force
+
 Write-Output "Zipping CPU build..."
 New-Zip "$proj\dist\SpeechToText" "$out\SpeechToText-Windows-CPU.zip"
+
+Remove-Item $spanishLauncher -Force
 
 Write-Output "Adding NVIDIA CUDA DLLs for the GPU build..."
 $nvidiaDir = python -c "import nvidia; print(list(nvidia.__path__)[0])"
