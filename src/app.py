@@ -39,7 +39,7 @@ from . import __version__
 from .dispatch import UiDispatcher
 from .hotkeys import HOTKEY_MINI, HOTKEY_RECORD
 from .hotkeys import create as create_hotkey_manager
-from .languages import LANG_NAMES, PANE_ORDER, counterpart
+from .languages import DEFAULT_LANG, LANG_NAMES, PANE_ORDER, counterpart
 from .recorder import MAX_RECORDING_SECONDS, SAMPLE_RATE, AudioRecorder
 from .transcriber import Transcriber
 from .transcript import TranscriptLog
@@ -125,6 +125,9 @@ class SpeechToTextApp(ctk.CTk):
         self.mini = None                  # the mini-mode pill widget, when open
         self.autocopy_var = tk.BooleanVar(value=True)
         self.translate_var = tk.BooleanVar(value=True)
+        # Off by default: this changes what lands on the clipboard, so it is
+        # opt-in rather than a surprise for anyone upgrading.
+        self.english_clip_var = tk.BooleanVar(value=False)
         self._dispatch = UiDispatcher(self, on_error=self._on_ui_error)
 
         self._build_ui()
@@ -247,16 +250,27 @@ class SpeechToTextApp(ctk.CTk):
         # Translation is the app's only network call - make it a real choice.
         ctk.CTkCheckBox(bottom, text="Translate (online)", font=UI_FONT,
                         variable=self.translate_var, checkbox_width=20,
-                        checkbox_height=20
+                        checkbox_height=20,
+                        command=self._sync_english_clip_state
                         ).grid(row=0, column=2, sticky="w")
 
-        bottom.grid_columnconfigure(3, weight=1)
+        # Only meaningful while Translate is on: with translation off there is
+        # no English version to copy, so the box greys out rather than
+        # promising something the app cannot deliver.
+        self.english_clip_box = ctk.CTkCheckBox(
+            bottom, text="Always copy English", font=UI_FONT,
+            variable=self.english_clip_var, checkbox_width=20,
+            checkbox_height=20)
+        self.english_clip_box.grid(row=0, column=3, sticky="w", padx=16)
+        self._sync_english_clip_state()
+
+        bottom.grid_columnconfigure(4, weight=1)
         # Its own row: hotkey hint + model + device runs long, and a Tk label
         # does not clip to its cell - sharing row 0 let it draw over the
         # Translate checkbox once the text outgrew the window width.
         self.device_lbl = ctk.CTkLabel(bottom, text="", font=("Segoe UI", 12),
                                        text_color="#9ca3af", anchor="e")
-        self.device_lbl.grid(row=1, column=0, columnspan=4, sticky="e",
+        self.device_lbl.grid(row=1, column=0, columnspan=5, sticky="e",
                              pady=(6, 0))
 
     def _attach_editing_helpers(self, box):
@@ -331,6 +345,28 @@ class SpeechToTextApp(ctk.CTk):
         """
         inner.tag_add("sel", "1.0", "end-1c")
         inner.mark_set("insert", "end-1c")
+
+    def _sync_english_clip_state(self):
+        """Grey out "Always copy English" whenever translation is off.
+
+        With translation off no English version is ever produced, so the
+        setting could not be honoured. Disabling it says that, instead of
+        leaving a tick box that silently does nothing.
+        """
+        self.english_clip_box.configure(
+            state="normal" if self.translate_var.get() else "disabled")
+
+    def _copy_to_clipboard(self, text):
+        """Replace the clipboard contents.
+
+        Args:
+            text (str): Text to put on the clipboard. Empty text is ignored,
+                so a failed step never wipes what the user already had.
+        """
+        if not text:
+            return
+        self.clipboard_clear()
+        self.clipboard_append(text)
 
     def _bind_shortcuts(self):
         """Bind in-app shortcuts (active while the window has focus)."""
@@ -435,7 +471,8 @@ class SpeechToTextApp(ctk.CTk):
             self._set_status("Transcribing…")
             threading.Thread(target=self._process_audio,
                              args=(audio, self.autocopy_var.get(),
-                                   self.translate_var.get()),
+                                   self.translate_var.get(),
+                                   self.english_clip_var.get()),
                              daemon=True).start()
 
     def _tick_recording(self):
@@ -464,16 +501,24 @@ class SpeechToTextApp(ctk.CTk):
 
     # ------------------------------------------------- transcribe/translate
 
-    def _process_audio(self, audio, autocopy, do_translate=True):
+    def _process_audio(self, audio, autocopy, do_translate=True,
+                       prefer_english=False):
         """Worker thread: audio -> text -> (optionally) translation.
 
         All UI updates are scheduled on the main loop with ``after()``.
 
         Args:
             audio (numpy.ndarray): 1-D float32 samples from the recorder.
-            autocopy (bool): Whether to copy the spoken text to the clipboard.
+            autocopy (bool): Whether to copy anything to the clipboard at all.
             do_translate (bool): Whether to call the online translator. When
                 False, nothing ever leaves the machine.
+            prefer_english (bool): Put the English version on the clipboard
+                whichever language was spoken. Only reachable with
+                ``do_translate``; ignored when English was already spoken,
+                since the spoken text *is* the English. When it applies, the
+                clipboard is written after the translation arrives rather than
+                as soon as the words appear, and falls back to the spoken text
+                if the translation fails.
         """
         if audio.size < SAMPLE_RATE * 0.3:  # under ~0.3 s of audio
             self._ui(self._finish, "Recording was too short - nothing to transcribe.")
@@ -490,9 +535,19 @@ class SpeechToTextApp(ctk.CTk):
             return
 
         speed = f"{duration:.0f}s of audio in {elapsed:.1f}s"
-        copied = " · copied to clipboard" if autocopy else ""
         other = counterpart(lang)
-        self._ui(self._show_result, text, lang, prob, autocopy)
+
+        # "Always copy English" only has anything to do when the spoken
+        # language is not already English and a translation is actually
+        # coming. In that one case the clipboard has to wait for the
+        # translation, so the copy moves out of _show_result to below.
+        wants_english = autocopy and prefer_english and do_translate
+        defer_copy = wants_english and lang != DEFAULT_LANG
+        copied = " · copied to clipboard" if autocopy and not defer_copy else ""
+
+        self._ui(self._show_result, text, lang, prob,
+                 autocopy and not defer_copy)
+
         if not do_translate:
             self._ui(self._finish,
                      f"Done - transcribed {speed}{copied}. (Translation off.)")
@@ -502,11 +557,19 @@ class SpeechToTextApp(ctk.CTk):
         try:
             translated = self.translate(text, target=other)
         except Exception:
+            # Fall back to the spoken text: a failed translation must not
+            # leave the clipboard holding whatever was there before.
+            if defer_copy:
+                self._ui(self._copy_to_clipboard, text)
             self._ui(self._finish,
                      f"Transcribed, but translation failed - are you online? "
-                     f"({LANG_NAMES[other]} pane not updated.){copied}")
+                     f"({LANG_NAMES[other]} pane not updated.)"
+                     f"{' · spoken text copied instead' if defer_copy else copied}")
             return
         self._ui(self._append_to_pane, other, translated)
+        if defer_copy:
+            self._ui(self._copy_to_clipboard, translated)
+            copied = " · English copied to clipboard"
         self._ui(self._finish, f"Done - transcribed {speed}{copied}.")
 
     def _show_result(self, text, lang, prob, autocopy=False):
@@ -516,7 +579,10 @@ class SpeechToTextApp(ctk.CTk):
             text (str): The transcript of the latest recording.
             lang (str): Detected language, ``"en"`` or ``"es"``.
             prob (float): Language-detection confidence (0..1).
-            autocopy (bool): Copy ``text`` to the clipboard when True.
+            autocopy (bool): Copy ``text`` to the clipboard when True. The
+                caller decides this: with "Always copy English" active on a
+                Spanish dictation it passes False here and copies the
+                translation later instead.
         """
         self._begin_entry()
         self.lang_badge.configure(
@@ -527,8 +593,7 @@ class SpeechToTextApp(ctk.CTk):
         self._append_to_pane(lang, text)
         if autocopy:
             # Latest spoken chunk goes straight to the clipboard for pasting.
-            self.clipboard_clear()
-            self.clipboard_append(text)
+            self._copy_to_clipboard(text)
 
     def _begin_entry(self):
         """Open a new transcript entry: bump the counter, stamp the clock.

@@ -228,6 +228,88 @@ class TestProcessAudio:
         assert "translation failed" in app.status_lbl.cget("text")
 
 
+class TestAlwaysCopyEnglish:
+    """With the option on, the clipboard gets English whatever was spoken.
+
+    The awkward part is timing: the spoken text is shown before the
+    translation exists, so the copy has to wait for it - and must still leave
+    something useful on the clipboard when the translation never arrives.
+    """
+
+    def _run(self, app, spoken, lang, translation="Hello.",
+             translate_ok=True, do_translate=True, prefer_english=True,
+             autocopy=True):
+        app.transcriber.transcribe.return_value = (spoken, lang, 0.99, 1.2)
+        app.translate = (MagicMock(return_value=translation) if translate_ok
+                         else MagicMock(side_effect=ConnectionError("offline")))
+        app.clipboard_clear()
+        app.clipboard_append("SENTINEL")
+        app._process_audio(np.zeros(16000, dtype=np.float32),
+                           autocopy=autocopy, do_translate=do_translate,
+                           prefer_english=prefer_english)
+        for _ in range(20):
+            app.update()
+        return app.clipboard_get()
+
+    def test_spanish_dictation_copies_the_english_translation(self, app):
+        assert self._run(app, "Hola mundo.", "es",
+                         translation="Hello world.") == "Hello world."
+
+    def test_english_dictation_still_copies_the_spoken_text(self, app):
+        """Spoken English already *is* the English - nothing to wait for."""
+        assert self._run(app, "Hello world.", "en",
+                         translation="Hola mundo.") == "Hello world."
+
+    def test_option_off_copies_the_spoken_text(self, app):
+        assert self._run(app, "Hola mundo.", "es", translation="Hello world.",
+                         prefer_english=False) == "Hola mundo."
+
+    def test_translation_off_falls_back_to_the_spoken_text(self, app):
+        """No translation means no English version exists to copy."""
+        assert self._run(app, "Hola mundo.", "es",
+                         do_translate=False) == "Hola mundo."
+
+    def test_failed_translation_falls_back_to_the_spoken_text(self, app):
+        """The clipboard must not be left holding the previous contents."""
+        assert self._run(app, "Hola mundo.", "es",
+                         translate_ok=False) == "Hola mundo."
+
+    def test_failed_translation_says_what_it_copied_instead(self, app):
+        self._run(app, "Hola mundo.", "es", translate_ok=False)
+        assert "spoken text copied instead" in app.status_lbl.cget("text")
+
+    def test_autocopy_off_copies_nothing_at_all(self, app):
+        """The master switch still wins over this one."""
+        assert self._run(app, "Hola mundo.", "es", translation="Hello world.",
+                         autocopy=False) == "SENTINEL"
+
+    def test_status_names_english_when_that_is_what_was_copied(self, app):
+        self._run(app, "Hola mundo.", "es", translation="Hello world.")
+        assert "English copied to clipboard" in app.status_lbl.cget("text")
+
+    def test_both_panes_still_get_their_text(self, app):
+        self._run(app, "Hola mundo.", "es", translation="Hello world.")
+        assert app._pane_text("es") == "Hola mundo."
+        assert app._pane_text("en") == "Hello world."
+
+
+class TestEnglishClipCheckbox:
+    def test_disabled_while_translation_is_off(self, app):
+        app.translate_var.set(False)
+        app._sync_english_clip_state()
+        assert app.english_clip_box.cget("state") == "disabled"
+
+    def test_enabled_again_when_translation_comes_back(self, app):
+        app.translate_var.set(False)
+        app._sync_english_clip_state()
+        app.translate_var.set(True)
+        app._sync_english_clip_state()
+        assert app.english_clip_box.cget("state") == "normal"
+
+    def test_off_by_default(self, app):
+        assert app.english_clip_var.get() is False
+
+
 class TestActions:
     def test_copy_pane(self, app):
         app.boxes["en"].insert("end", "clipboard test")

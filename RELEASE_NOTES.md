@@ -1,11 +1,12 @@
-## Speech to Text v2.1.7 - better Spanish, without touching a terminal
+## Speech to Text v2.1.8 - dictate in Spanish, paste in English
 
 Dictate in **English or Spanish**, get both languages side by side, with all
 speech recognition running on your own computer.
 
-This release fixes four bugs and makes one thing easier: getting correct
-Spanish punctuation - the accent in *Mondragón* and the opening **¿** on a
-question - now takes one double-click instead of an environment variable.
+**New in this release:** a checkbox called **Always copy English**. Tick it and
+whatever you dictate - English or Spanish - the *English* version is what lands
+on your clipboard, ready to paste. Speak Spanish, paste English, without
+touching either panel.
 
 ---
 
@@ -130,7 +131,38 @@ three times as long for exactly the same words.
 
 ---
 
+# Always copy English
+
+Normally the app copies **what you said**. Dictate in Spanish and you get
+Spanish on the clipboard.
+
+Tick **Always copy English** in the bottom bar and you get the English version
+instead, whichever language you spoke. Useful when you think in Spanish but
+write to people in English.
+
+**How to use it:** tick the box. That is all. Speak, wait a moment, paste.
+
+Things worth knowing:
+
+- **It needs *Translate (online)* switched on**, because the English version is
+  the translation. With translation off the box greys out, rather than
+  pretending to work.
+- **It is off by default**, so nothing changes for anyone who does not want it.
+- **Dictating in English changes nothing** - what you said is already English.
+- **The clipboard fills a moment later than usual**, once the translation
+  arrives, instead of the instant your words appear. The status line says
+  *English copied to clipboard* when it is genuinely ready.
+- **If the translation fails** (offline, or a network that never replies), your
+  spoken text is copied instead so the clipboard is never left stale. The
+  status line says so.
+- It adds **no extra network call**. It uses the translation the app already
+  made for the other panel.
+
+---
+
 # What else changed
+
+Everything below shipped in v2.1.7 and is included here.
 
 **Four bugs fixed**, two of which could leave the app looking frozen:
 

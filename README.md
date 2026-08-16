@@ -29,6 +29,7 @@ copied or pasted.
 - ⏱️ **Record as long as you need** - Record / Stop whenever you want, up to 30 minutes in one take (audio is held in memory, so it stops there rather than filling your RAM; it transcribes what it captured)
 - ✏️ **Editable panes** - fix anything by hand; right-click menu, Ctrl+A/C/X/V, undo
 - 📋 **Auto-copy** - dictated text lands on your clipboard, ready to paste anywhere
+- 🇬🇧 **Always copy English** - optional: dictate in Spanish, paste in English, without touching the panes
 - 🔘 **Mini mode** - collapse to a tiny always-on-top pill at the screen edge
 - ⌨️ **Global hotkeys** (Windows) - record from inside any app
 - 🔒 **Private by design** - audio never leaves your computer. The translation pane sends each recording's transcribed **text** (never audio) to Google Translate; untick **Translate (online)** and nothing leaves your machine at all
@@ -320,6 +321,7 @@ long for exactly the same words. See the measurements in
 | Save both languages to .txt | **Save transcript** or `Ctrl+S` (headers kept) |
 | Edit text | Click and type; right-click for Cut/Copy/Paste; `Ctrl+Z` undo |
 | Auto-copy after dictation | Checkbox in the bottom bar (on by default) |
+| Always paste in English | Tick **Always copy English** (off by default; needs Translate on) |
 | Translation on/off | **Translate (online)** checkbox - untick to stay 100% offline |
 
 ### Mini mode
@@ -361,6 +363,7 @@ The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs, `small` 
   because keyloggers use hooks too. This app registers exactly two hotkey patterns and **never reads, stores, or transmits keystrokes** - the        entire usage is ~10 lines in [`src/app.py`](src/app.py) (`_register_global_hotkeys`),
   and the hook is released on exit. On macOS and Linux the hook needs elevated permissions, so the app simply disables global hotkeys there.
 - Auto-copy writes to your clipboard only when the checkbox is on.
+- **Always copy English** changes only *which* text is copied, never whether anything is sent. It uses the translation the app already made, so it adds no extra network call.
 - No telemetry, no analytics, no accounts. Transcripts are saved only when you click Save. Audio is never written to disk.
 - **Signed, reproducible releases:** Windows binaries are code-signed (Azure Trusted Signing, verified publisher), built by GitHub Actions from
   the exact versions in `requirements-lock.txt` - the build logs are public in the Actions tab - and published with SHA-256 checksums.
