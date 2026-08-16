@@ -22,7 +22,7 @@ copied or pasted.
 - 🗂️ **One entry per recording** - each dictation starts a new block headed by its number and time; the headers are never copied or pasted
 - ✅ **Precise** - Whisper produces punctuated, correctly spelled text
 - ⚡ **Fast** - GPU-accelerated on NVIDIA cards (17x realtime on a modern GPU); automatic CPU mode everywhere else
-- ⏱️ **No time limit** - Record / Stop whenever you want
+- ⏱️ **Record as long as you need** - Record / Stop whenever you want, up to 30 minutes in one take (audio is held in memory, so it stops there rather than filling your RAM; it transcribes what it captured)
 - ✏️ **Editable panes** - fix anything by hand; right-click menu, Ctrl+A/C/X/V, undo
 - 📋 **Auto-copy** - dictated text lands on your clipboard, ready to paste anywhere
 - 🔘 **Mini mode** - collapse to a tiny always-on-top pill at the screen edge
@@ -320,8 +320,12 @@ src/
   recorder.py        threaded 16 kHz mic capture (sounddevice -> numpy)
   transcriber.py     faster-whisper wrapper + language auto-detection
   translator.py      EN<->ES translation with sentence-aware chunking
-  app.py             CustomTkinter two-pane UI, mini mode, global hotkeys
-tests/               pytest suite (logic, recorder, transcriber, translator, UI)
+  languages.py       the pane languages and the pairing between them
+  transcript.py      entry numbering and the "#3 · 2:41 PM" headers
+  dispatch.py        worker thread -> Tk main loop hand-off
+  hotkeys.py         global hotkeys, and the no-op stand-in off Windows
+  app.py             CustomTkinter two-pane UI, mini mode, recording flow
+tests/               pytest suite (110 tests across every module above)
 scripts/
   build_release.ps1  Windows: PyInstaller -> the two release zips
   build_macos.sh     macOS: PyInstaller -> .app -> .dmg (unsigned)

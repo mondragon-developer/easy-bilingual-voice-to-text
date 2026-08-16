@@ -1,6 +1,6 @@
 # Keeps the pins fresh. Both ecosystems are pinned to exact versions (and
 # the lockfile to exact hashes), which is only safe if something updates
-# them — otherwise "pinned" quietly becomes "stale and vulnerable".
+# them - otherwise "pinned" quietly becomes "stale and vulnerable".
 version: 2
 updates:
   # Action SHAs. A pin is what stops a hijacked tag from running inside the

@@ -4,7 +4,8 @@ from unittest.mock import patch
 
 import numpy as np
 
-from src.recorder import SAMPLE_RATE, AudioRecorder
+from src.recorder import (MAX_RECORDING_SAMPLES, MAX_RECORDING_SECONDS,
+                          SAMPLE_RATE, AudioRecorder)
 
 
 class FakeStream:
@@ -82,3 +83,63 @@ class TestAudioRecorder:
 
     def test_sample_rate_is_whisper_native(self):
         assert SAMPLE_RATE == 16000
+
+
+@patch("src.recorder.sd.InputStream", FakeStream)
+class TestRecordingLimit:
+    """Audio lives in RAM, so an open microphone must not grow forever."""
+
+    def _block(self, n):
+        return np.ones((n, 1), dtype=np.float32) * 0.1
+
+    def test_limit_not_flagged_during_normal_use(self):
+        rec = AudioRecorder(max_samples=1000)
+        rec.start()
+        rec._stream.callback(self._block(500), 500, None, None)
+        assert not rec.limit_reached
+
+    def test_audio_past_the_cap_is_dropped(self):
+        rec = AudioRecorder(max_samples=1000)
+        rec.start()
+        rec._stream.callback(self._block(800), 800, None, None)
+        rec._stream.callback(self._block(800), 800, None, None)
+        audio = rec.stop()
+        assert audio.size == 1000, "must keep exactly the cap, not 1600"
+        assert rec.limit_reached
+
+    def test_blocks_arriving_after_the_cap_are_ignored_entirely(self):
+        rec = AudioRecorder(max_samples=100)
+        rec.start()
+        rec._stream.callback(self._block(100), 100, None, None)
+        rec._stream.callback(self._block(500), 500, None, None)
+        rec._stream.callback(self._block(500), 500, None, None)
+        assert rec.stop().size == 100
+
+    def test_a_partial_block_is_truncated_not_discarded(self):
+        rec = AudioRecorder(max_samples=120)
+        rec.start()
+        rec._stream.callback(self._block(100), 100, None, None)
+        rec._stream.callback(self._block(100), 100, None, None)
+        assert rec.stop().size == 120
+
+    def test_the_flag_clears_on_the_next_recording(self):
+        rec = AudioRecorder(max_samples=100)
+        rec.start()
+        rec._stream.callback(self._block(200), 200, None, None)
+        rec.stop()
+        assert rec.limit_reached
+        rec.start()
+        assert not rec.limit_reached
+
+    def test_a_second_recording_starts_from_an_empty_budget(self):
+        rec = AudioRecorder(max_samples=100)
+        rec.start()
+        rec._stream.callback(self._block(100), 100, None, None)
+        rec.stop()
+        rec.start()
+        rec._stream.callback(self._block(60), 60, None, None)
+        assert rec.stop().size == 60
+
+    def test_default_cap_matches_the_documented_minutes(self):
+        assert MAX_RECORDING_SAMPLES == SAMPLE_RATE * MAX_RECORDING_SECONDS
+        assert MAX_RECORDING_SECONDS == 30 * 60

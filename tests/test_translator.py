@@ -2,7 +2,58 @@
 
 from unittest.mock import MagicMock, patch
 
-from src.translator import _MAX_CHARS, _split_chunks, translate
+import requests
+
+from src.translator import (NETWORK_TIMEOUT, _MAX_CHARS, _request_timeout,
+                            _split_chunks, translate)
+
+
+class TestRequestTimeout:
+    """deep-translator calls requests.get() with no timeout, and requests then
+    waits forever. A captive portal would hang the worker thread for good."""
+
+    def test_a_timeout_is_injected_into_the_call(self):
+        seen = {}
+        with patch.object(requests, "get",
+                          side_effect=lambda *a, **k: seen.update(k)):
+            with _request_timeout(7):
+                requests.get("http://example.invalid/")
+        assert seen["timeout"] == 7
+
+    def test_an_explicit_timeout_is_not_overridden(self):
+        seen = {}
+        with patch.object(requests, "get",
+                          side_effect=lambda *a, **k: seen.update(k)):
+            with _request_timeout(7):
+                requests.get("http://example.invalid/", timeout=1)
+        assert seen["timeout"] == 1
+
+    def test_requests_get_is_restored_afterwards(self):
+        original = requests.get
+        with _request_timeout(7):
+            assert requests.get is not original
+        assert requests.get is original
+
+    def test_it_is_restored_even_when_the_call_raises(self):
+        original = requests.get
+        try:
+            with _request_timeout(7):
+                raise ConnectionError("offline")
+        except ConnectionError:
+            pass
+        assert requests.get is original
+
+    def test_translate_applies_the_timeout(self):
+        seen = {}
+        fake = MagicMock()
+        fake.translate.side_effect = lambda chunk: seen.update(
+            captured=requests.get.__name__) or "hola"
+        with patch("src.translator.GoogleTranslator", return_value=fake):
+            translate("hello", target="es")
+        assert seen["captured"] == "_get_with_timeout"
+
+    def test_the_timeout_is_a_sane_length(self):
+        assert 5 <= NETWORK_TIMEOUT <= 60
 
 
 class TestSplitChunks:

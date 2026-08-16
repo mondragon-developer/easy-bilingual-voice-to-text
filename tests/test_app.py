@@ -1,7 +1,7 @@
 """UI tests for src.app with the heavy dependencies mocked out.
 
 These create a real (hidden-ish) CustomTkinter window, so they need a
-desktop session — they run on a normal Windows/macOS/Linux machine but
+desktop session - they run on a normal Windows/macOS/Linux machine but
 would need a virtual display (e.g. Xvfb) on a headless CI runner.
 """
 
@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from src.app import LANG_NAMES, MiniWidget, SpeechToTextApp
+from src.hotkeys import NullHotkeyManager
 
 
 @pytest.fixture(scope="module")
@@ -20,27 +21,29 @@ def _shared_app():
 
     Tk misbehaves when many interpreters are created and destroyed in a
     single process, so all tests share one window (state is reset by the
-    ``app`` fixture below). Model loading and global hotkeys are stubbed.
+    ``app`` fixture below).
+
+    The transcriber and the hotkey manager are handed in rather than patched:
+    the app takes its collaborators as constructor arguments, so a test can
+    substitute them directly.
     """
-    with patch("src.app.Transcriber") as fake_cls, \
-         patch.object(SpeechToTextApp, "_register_global_hotkeys",
-                      lambda self: setattr(self, "hotkeys_ok", False)):
-        fake = fake_cls.return_value
-        fake.load.return_value = "GPU (test)"
-        fake.gpu_error = None
-        fake.model_name = "large-v3"
-        application = SpeechToTextApp()
-        # Let the model-load thread finish and its after() callbacks run.
-        for _ in range(50):
-            application.update()
-            if application.model_ready:
-                break
-        yield application
-        try:
-            application.update()  # drain pending after() callbacks
-            application.destroy()
-        except Exception:
-            pass  # window already torn down
+    fake = MagicMock()
+    fake.load.return_value = "GPU (test)"
+    fake.gpu_error = None
+    fake.model_name = "large-v3"
+    application = SpeechToTextApp(transcriber=fake,
+                                  hotkeys=NullHotkeyManager())
+    # Let the model-load thread finish and its after() callbacks run.
+    for _ in range(50):
+        application.update()
+        if application.model_ready:
+            break
+    yield application
+    try:
+        application.update()  # drain pending after() callbacks
+        application.destroy()
+    except Exception:
+        pass  # window already torn down
 
 
 @pytest.fixture
@@ -51,7 +54,7 @@ def app(_shared_app):
     a._processing = False
     for box in a.boxes.values():
         box.delete("1.0", "end")
-    a._entry_no, a._entry_stamp, a._stamp_day, a._stamped = 0, None, None, set()
+    a.log.reset()
     if a.mini is not None and a.mini.winfo_exists():
         a.toggle_mini_mode()  # make sure we start restored, no pill
     a.deiconify()
@@ -149,7 +152,7 @@ class TestEntries:
         assert app.boxes["en"].get("1.0", "end-1c") == ""
 
     def test_hand_edits_beside_a_header_stay_copyable(self, app):
-        """Tk gives new text the tags shared by both neighbours — so text
+        """Tk gives new text the tags shared by both neighbours - so text
         typed against a header must not be absorbed into it and vanish
         from the clipboard."""
         app._show_result("One.", "en", 0.9)
@@ -193,8 +196,8 @@ class TestProcessAudio:
 
     def test_full_flow_fills_both_panes(self, app):
         app.transcriber.transcribe.return_value = ("Hello.", "en", 0.99, 1.2)
-        with patch("src.app.translate", return_value="Hola."):
-            app._process_audio(np.zeros(16000, dtype=np.float32), autocopy=False)
+        app.translate = MagicMock(return_value="Hola.")
+        app._process_audio(np.zeros(16000, dtype=np.float32), autocopy=False)
         for _ in range(20):
             app.update()
         assert app._pane_text("en") == "Hello."
@@ -203,11 +206,12 @@ class TestProcessAudio:
 
     def test_translate_off_makes_no_network_call(self, app):
         app.transcriber.transcribe.return_value = ("Hello.", "en", 0.99, 1.2)
-        with patch("src.app.translate") as fake_translate:
-            app._process_audio(np.zeros(16000, dtype=np.float32),
-                               autocopy=False, do_translate=False)
-            for _ in range(20):
-                app.update()
+        fake_translate = MagicMock()
+        app.translate = fake_translate
+        app._process_audio(np.zeros(16000, dtype=np.float32),
+                           autocopy=False, do_translate=False)
+        for _ in range(20):
+            app.update()
         fake_translate.assert_not_called()
         assert app._pane_text("en") == "Hello."
         assert app.boxes["es"].get("1.0", "end-1c") == ""
@@ -215,8 +219,8 @@ class TestProcessAudio:
 
     def test_translation_failure_keeps_spoken_text(self, app):
         app.transcriber.transcribe.return_value = ("Hello.", "en", 0.99, 1.2)
-        with patch("src.app.translate", side_effect=ConnectionError("offline")):
-            app._process_audio(np.zeros(16000, dtype=np.float32), autocopy=False)
+        app.translate = MagicMock(side_effect=ConnectionError("offline"))
+        app._process_audio(np.zeros(16000, dtype=np.float32), autocopy=False)
         for _ in range(20):
             app.update()
         assert app._pane_text("en") == "Hello."

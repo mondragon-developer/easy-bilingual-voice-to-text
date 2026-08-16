@@ -10,6 +10,8 @@ import re
 import sys
 import warnings
 
+from .languages import normalise
+
 if sys.platform == "darwin":
     # NumPy on macOS links against Apple's Accelerate BLAS, which leaves the
     # CPU's floating-point exception flags set after a matmul even when the
@@ -117,7 +119,7 @@ class Transcriber:
                                       compute_type="int8")
             self.device_label = "CPU (int8)"
 
-        # Batched pipeline decodes VAD-split chunks in parallel — much faster
+        # Batched pipeline decodes VAD-split chunks in parallel - much faster
         # than sequential decoding, especially for longer dictations.
         self.pipeline = BatchedInferencePipeline(model=self.model)
 
@@ -141,7 +143,7 @@ class Transcriber:
             tuple: ``(text, lang, probability, duration)`` where
 
                 - text (str): cleaned transcript (punctuated, spell-correct);
-                - lang (str): ``"en"`` or ``"es"`` — auto-detected; anything
+                - lang (str): ``"en"`` or ``"es"`` - auto-detected; anything
                   that is not Spanish maps to English so the two UI panes
                   always have a home for the text;
                 - probability (float): confidence of the language detection;
@@ -155,5 +157,5 @@ class Transcriber:
         # Iterating the generator is what actually runs the transcription.
         text = " ".join(seg.text.strip() for seg in segments)
         text = re.sub(r"\s+", " ", text).strip()
-        lang = "es" if info.language == "es" else "en"
+        lang = normalise(info.language)
         return text, lang, info.language_probability, info.duration
