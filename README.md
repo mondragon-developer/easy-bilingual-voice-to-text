@@ -58,19 +58,25 @@ drivers; otherwise the app automatically uses CPU mode.
 
 ### Option A: Download (no Python needed)
 
-1. Go to [**Releases**](../../releases) and download
-   **`SpeechToText-macOS-AppleSilicon.dmg`** (~75 MB).
+Requires an **Apple Silicon** Mac (M1 or later) on **macOS 11 or newer**. To
+check, open the Apple menu > **About This Mac**: the *Chip* line should say
+Apple M-something. If it says Intel, use Option B instead.
+
+1. Go to [**Releases**](../../releases/latest) and download
+   **`SpeechToText-macOS-AppleSilicon.dmg`** (~81 MB).
 2. Open it and drag **SpeechToText** onto **Applications**.
-3. macOS will refuse to open it the first time, because the app is not signed
-   by Apple. See below - it is two clicks, once.
-4. First launch downloads the speech model once (~460 MB); later launches start
+3. Open it from Applications. macOS will refuse the first time, because the app
+   is not signed by Apple. See below - it is two clicks, once.
+4. Click **Allow** when macOS asks for the microphone. Without it the app can
+   record nothing.
+5. First launch downloads the speech model once (~460 MB); later launches start
    in seconds.
 
 The app brings its own Python and its own Tk, so **none of the Python setup in
 Option B applies to it** - that is the whole point of the download.
 
-> **⚠️ Apple Silicon only.** M1 and later. PyInstaller cannot cross-compile, so
-> an Intel Mac needs Option B for now.
+> **Why no Intel build?** PyInstaller cannot cross-compile, so an Intel `.dmg`
+> needs an Intel machine to build it. Option B works there today.
 
 > **⚠️ Unsigned, so Gatekeeper will block it.** Signing an app for macOS needs a
 > paid Apple Developer account, which this project does not have yet. Nothing is
@@ -188,7 +194,7 @@ every Mac and could crash on startup.
 
 ### macOS notes
 
-- **Microphone permission**: the first recording triggers a permission prompt (or enable it in *System Settings > Privacy & Security > Microphone* for your terminal/Python).
+- **Microphone permission**: the first recording triggers a permission prompt. If you dismissed it, enable it by hand in *System Settings > Privacy & Security > Microphone* - tick **SpeechToText** if you installed the `.dmg`, or your terminal if you run from source.
 - **Speed**: there is no NVIDIA CUDA on Mac, so transcription runs on CPU and the app automatically selects the lighter `small` model. Measured on an M5 Pro, that transcribes roughly **7x faster than real time**: about 2 seconds for a 14-second dictation, with punctuation, accents and EN/ES detection all correct.
 - **`small` is the right default.** `STT_MODEL=medium` is roughly 3x slower for identical output on clean dictation. Reach for it only if the app keeps mishearing you on hard audio (strong accent, background noise, unusual technical vocabulary).
 - **Global hotkeys** (Ctrl+Alt+R from other apps) are not available on macOS without running as root, so the app skips them entirely there. In-app shortcuts (Ctrl+R / Ctrl+S) still work.

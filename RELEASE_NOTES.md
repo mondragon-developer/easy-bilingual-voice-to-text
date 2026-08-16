@@ -12,7 +12,7 @@ Windows is unchanged and still signed.
 
 | You have | Download | Size |
 |---|---|---|
-| A Mac with **Apple Silicon** (M1 or later) | `SpeechToText-macOS-AppleSilicon.dmg` | ~75 MB |
+| A Mac with **Apple Silicon** (M1 or later) | `SpeechToText-macOS-AppleSilicon.dmg` | ~81 MB |
 | An **Intel** Mac | Source, see the [README](README.md#install---macos) | - |
 
 **It is not signed by Apple, so macOS will refuse to open it the first time.**
@@ -57,7 +57,7 @@ desktop.
 |---|---|---|
 | A PC with an **NVIDIA GPU** | `SpeechToText-Windows-GPU.zip` | ~1.5 GB |
 | **Any other Windows PC** | `SpeechToText-Windows-CPU.zip` | ~95 MB |
-| A Mac with **Apple Silicon** | `SpeechToText-macOS-AppleSilicon.dmg` | ~75 MB |
+| A Mac with **Apple Silicon** | `SpeechToText-macOS-AppleSilicon.dmg` | ~81 MB |
 | An Intel Mac, or you prefer Python | *Source code* below + see the [README](README.md) | - |
 
 **Install on Windows:** unzip, then run `SpeechToText.exe`. The first launch
