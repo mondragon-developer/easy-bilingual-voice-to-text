@@ -89,10 +89,30 @@ class TestSaving:
         assert store.save(dict(DEFAULTS)) is True
         assert store.path.exists()
 
-    def test_an_unwritable_location_reports_failure_but_does_not_raise(self):
-        """A read-only home is not worth interrupting anyone over."""
-        store = Settings("/settings-that-cannot-be-written/settings.json")
+    def test_a_blocked_location_reports_failure_but_does_not_raise(self, tmp_path):
+        """A read-only home is not worth interrupting anyone over.
+
+        The blocked path is made by putting a *file* where the parent
+        directory needs to be, so ``mkdir`` fails for real on every platform.
+        An earlier version of this test used an absolute path like
+        ``/nope/settings.json`` and assumed it was unwritable - which held on
+        macOS and failed on the Windows CI runner, where the user could
+        happily create ``C:\\nope``.
+        """
+        blocker = tmp_path / "in-the-way"
+        blocker.write_text("I am a file, not a directory", encoding="utf-8")
+        store = Settings(blocker / "settings.json")
         assert store.save(dict(DEFAULTS)) is False
+
+    def test_an_os_error_while_writing_reports_failure(self, store):
+        """Covers the read-only-disk case without depending on a real one."""
+        with patch("pathlib.Path.mkdir", side_effect=PermissionError("read-only")):
+            assert store.save(dict(DEFAULTS)) is False
+
+    def test_a_blocked_location_still_loads_defaults(self, tmp_path):
+        blocker = tmp_path / "in-the-way"
+        blocker.write_text("not a directory", encoding="utf-8")
+        assert Settings(blocker / "settings.json").load() == DEFAULTS
 
     def test_no_temporary_files_are_left_behind(self, store):
         store.save(dict(DEFAULTS))
