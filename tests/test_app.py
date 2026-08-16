@@ -13,6 +13,7 @@ import pytest
 
 from src.app import LANG_NAMES, MiniWidget, SpeechToTextApp
 from src.hotkeys import NullHotkeyManager
+from src.settings import Settings
 
 
 @pytest.fixture(scope="module")
@@ -291,6 +292,84 @@ class TestAlwaysCopyEnglish:
         self._run(app, "Hola mundo.", "es", translation="Hello world.")
         assert app._pane_text("es") == "Hola mundo."
         assert app._pane_text("en") == "Hello world."
+
+
+class TestSettingsPersistence:
+    """The checkboxes must survive a restart.
+
+    These build their own windows rather than using the shared one, because
+    the point is what a *second* launch reads back.
+    """
+
+    def _launch(self, settings):
+        fake = MagicMock()
+        fake.load.return_value = "CPU (test)"
+        fake.gpu_error = None
+        fake.model_name = "small"
+        application = SpeechToTextApp(transcriber=fake,
+                                      hotkeys=NullHotkeyManager(),
+                                      settings=settings)
+        for _ in range(50):
+            application.update()
+            if application.model_ready:
+                break
+        return application
+
+    def test_a_toggle_is_written_immediately(self, tmp_path):
+        """Saved on change, not only at exit, so a force quit loses nothing."""
+        store = Settings(tmp_path / "s.json")
+        app = self._launch(store)
+        try:
+            app.english_clip_var.set(True)
+            app._save_settings()
+            assert store.load()["always_copy_english"] is True
+        finally:
+            app.destroy()
+
+    def test_choices_come_back_on_the_next_launch(self, tmp_path):
+        store = Settings(tmp_path / "s.json")
+        first = self._launch(store)
+        try:
+            first.autocopy_var.set(False)
+            first.english_clip_var.set(True)
+            first._save_settings()
+        finally:
+            first.destroy()
+
+        second = self._launch(store)
+        try:
+            assert second.autocopy_var.get() is False
+            assert second.english_clip_var.get() is True
+        finally:
+            second.destroy()
+
+    def test_a_corrupt_file_still_lets_the_app_start(self, tmp_path):
+        path = tmp_path / "s.json"
+        path.write_text("{{{ not json", encoding="utf-8")
+        app = self._launch(Settings(path))
+        try:
+            assert app.autocopy_var.get() is True   # the default
+        finally:
+            app.destroy()
+
+    def test_unwritable_settings_do_not_break_anything(self, tmp_path):
+        """A read-only home must not stop the app working."""
+        store = Settings(tmp_path / "s.json")
+        app = self._launch(store)
+        try:
+            with patch.object(store, "save", return_value=False):
+                app._save_settings()          # must not raise
+                app.english_clip_var.set(True)
+            assert app.english_clip_var.get() is True
+        finally:
+            app.destroy()
+
+    def test_closing_saves_as_a_backstop(self, tmp_path):
+        store = Settings(tmp_path / "s.json")
+        app = self._launch(store)
+        app.translate_var.set(False)
+        app._on_close()                        # destroys the window
+        assert store.load()["translate"] is False
 
 
 class TestEnglishClipCheckbox:

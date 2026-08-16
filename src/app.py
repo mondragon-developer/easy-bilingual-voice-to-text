@@ -41,6 +41,7 @@ from .hotkeys import HOTKEY_MINI, HOTKEY_RECORD
 from .hotkeys import create as create_hotkey_manager
 from .languages import DEFAULT_LANG, LANG_NAMES, PANE_ORDER, counterpart
 from .recorder import MAX_RECORDING_SECONDS, SAMPLE_RATE, AudioRecorder
+from .settings import Settings
 from .transcriber import Transcriber
 from .transcript import TranscriptLog
 from .translator import translate
@@ -93,7 +94,7 @@ class SpeechToTextApp(ctk.CTk):
     """
 
     def __init__(self, recorder=None, transcriber=None, translator=None,
-                 hotkeys=None):
+                 hotkeys=None, settings=None):
         """
         Collaborators are injected with working defaults, so the app is still
         ``SpeechToTextApp()`` in ``main.py`` while a test can hand it a fake
@@ -104,6 +105,8 @@ class SpeechToTextApp(ctk.CTk):
             transcriber: Object with the ``Transcriber`` interface.
             translator: Callable ``(text, target) -> str``.
             hotkeys: Object with the ``hotkeys`` manager interface.
+            settings: Object with the ``Settings`` interface, for remembering
+                the checkboxes between launches.
         """
         super().__init__()
         self.title(f"Speech to Text v{__version__} - EN / ES")
@@ -123,11 +126,14 @@ class SpeechToTextApp(ctk.CTk):
         self._processing = False          # a transcription is in flight
         self._state = "disabled"          # idle | recording | processing | done | disabled
         self.mini = None                  # the mini-mode pill widget, when open
-        self.autocopy_var = tk.BooleanVar(value=True)
-        self.translate_var = tk.BooleanVar(value=True)
+        self.settings = settings if settings is not None else Settings()
+        saved = self.settings.load()
+        self.autocopy_var = tk.BooleanVar(value=saved["autocopy"])
+        self.translate_var = tk.BooleanVar(value=saved["translate"])
         # Off by default: this changes what lands on the clipboard, so it is
         # opt-in rather than a surprise for anyone upgrading.
-        self.english_clip_var = tk.BooleanVar(value=False)
+        self.english_clip_var = tk.BooleanVar(
+            value=saved["always_copy_english"])
         self._dispatch = UiDispatcher(self, on_error=self._on_ui_error)
 
         self._build_ui()
@@ -244,14 +250,14 @@ class SpeechToTextApp(ctk.CTk):
 
         ctk.CTkCheckBox(bottom, text="Auto-copy spoken text", font=UI_FONT,
                         variable=self.autocopy_var, checkbox_width=20,
-                        checkbox_height=20
+                        checkbox_height=20, command=self._save_settings
                         ).grid(row=0, column=1, sticky="w", padx=16)
 
         # Translation is the app's only network call - make it a real choice.
         ctk.CTkCheckBox(bottom, text="Translate (online)", font=UI_FONT,
                         variable=self.translate_var, checkbox_width=20,
                         checkbox_height=20,
-                        command=self._sync_english_clip_state
+                        command=self._on_translate_toggled
                         ).grid(row=0, column=2, sticky="w")
 
         # Only meaningful while Translate is on: with translation off there is
@@ -260,7 +266,7 @@ class SpeechToTextApp(ctk.CTk):
         self.english_clip_box = ctk.CTkCheckBox(
             bottom, text="Always copy English", font=UI_FONT,
             variable=self.english_clip_var, checkbox_width=20,
-            checkbox_height=20)
+            checkbox_height=20, command=self._save_settings)
         self.english_clip_box.grid(row=0, column=3, sticky="w", padx=16)
         self._sync_english_clip_state()
 
@@ -345,6 +351,25 @@ class SpeechToTextApp(ctk.CTk):
         """
         inner.tag_add("sel", "1.0", "end-1c")
         inner.mark_set("insert", "end-1c")
+
+    def _save_settings(self):
+        """Persist the checkbox states.
+
+        Called on every toggle rather than only at exit, so a crash or a force
+        quit cannot lose the choice. A failure to write is deliberately
+        ignored: the app works perfectly well without remembering, and a
+        read-only home directory is not worth interrupting anyone over.
+        """
+        self.settings.save({
+            "autocopy": self.autocopy_var.get(),
+            "translate": self.translate_var.get(),
+            "always_copy_english": self.english_clip_var.get(),
+        })
+
+    def _on_translate_toggled(self):
+        """Translation was switched on or off: restyle, then remember."""
+        self._sync_english_clip_state()
+        self._save_settings()
 
     def _sync_english_clip_state(self):
         """Grey out "Always copy English" whenever translation is off.
@@ -773,6 +798,12 @@ class SpeechToTextApp(ctk.CTk):
         """Clean up (mic stream, global hotkeys) and close the app."""
         if self.recorder.is_recording:
             self.recorder.stop()
+        # Belt and braces: every toggle already saves, so this only matters if
+        # a state was changed some other way. It must never block the exit.
+        try:
+            self._save_settings()
+        except Exception:  # noqa: BLE001 - closing regardless
+            pass
         self.hotkeys.unregister()
         self.destroy()
 

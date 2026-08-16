@@ -1,12 +1,15 @@
-## Speech to Text v2.1.8 - dictate in Spanish, paste in English
+## Speech to Text v2.1.9 - it remembers your settings now
 
 Dictate in **English or Spanish**, get both languages side by side, with all
 speech recognition running on your own computer.
 
-**New in this release:** a checkbox called **Always copy English**. Tick it and
-whatever you dictate - English or Spanish - the *English* version is what lands
-on your clipboard, ready to paste. Speak Spanish, paste English, without
-touching either panel.
+**New in this release:** the three checkboxes at the bottom of the window stay
+where you put them. Set them once and they are the same next time you open the
+app.
+
+Also included, from v2.1.8: **Always copy English** - tick it and whatever you
+dictate, English or Spanish, the *English* version is what lands on your
+clipboard. Speak Spanish, paste English.
 
 ---
 
@@ -128,6 +131,30 @@ say `Whisper medium` instead of `Whisper small`.
 Because on English the two produce **byte-for-byte identical** text - we
 measured it - so making it the default would make every English speaker wait
 three times as long for exactly the same words.
+
+---
+
+# Your settings are remembered
+
+Previously every checkbox reset to its default each time you opened the app,
+which was tolerable with two and annoying with three.
+
+Now **Auto-copy**, **Translate (online)** and **Always copy English** are saved
+the moment you change them, and restored the next time you start. There is
+nothing to set up and no *Save settings* button - it simply works.
+
+The app writes one small file for this, holding only those three switches.
+Never any of your text:
+
+| | |
+|---|---|
+| Windows | `%APPDATA%\SpeechToText\settings.json` |
+| Mac | `~/Library/Application Support/SpeechToText/settings.json` |
+| Linux | `~/.config/SpeechToText/settings.json` |
+
+Delete it whenever you like and the app returns to its defaults. If the file
+cannot be written - a locked-down work machine, say - the app carries on
+exactly as before and simply does not remember.
 
 ---
 

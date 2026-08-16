@@ -30,6 +30,7 @@ copied or pasted.
 - ✏️ **Editable panes** - fix anything by hand; right-click menu, Ctrl+A/C/X/V, undo
 - 📋 **Auto-copy** - dictated text lands on your clipboard, ready to paste anywhere
 - 🇬🇧 **Always copy English** - optional: dictate in Spanish, paste in English, without touching the panes
+- 💾 **Remembers your checkboxes** - the three switches stay as you left them next time you open the app
 - 🔘 **Mini mode** - collapse to a tiny always-on-top pill at the screen edge
 - ⌨️ **Global hotkeys** (Windows) - record from inside any app
 - 🔒 **Private by design** - audio never leaves your computer. The translation pane sends each recording's transcribed **text** (never audio) to Google Translate; untick **Translate (online)** and nothing leaves your machine at all
@@ -322,6 +323,7 @@ long for exactly the same words. See the measurements in
 | Edit text | Click and type; right-click for Cut/Copy/Paste; `Ctrl+Z` undo |
 | Auto-copy after dictation | Checkbox in the bottom bar (on by default) |
 | Always paste in English | Tick **Always copy English** (off by default; needs Translate on) |
+| Keep your checkbox choices | Automatic - they are saved as you change them |
 | Translation on/off | **Translate (online)** checkbox - untick to stay 100% offline |
 
 ### Mini mode
@@ -365,6 +367,12 @@ The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs, `small` 
 - Auto-copy writes to your clipboard only when the checkbox is on.
 - **Always copy English** changes only *which* text is copied, never whether anything is sent. It uses the translation the app already made, so it adds no extra network call.
 - No telemetry, no analytics, no accounts. Transcripts are saved only when you click Save. Audio is never written to disk.
+- **The only file the app writes on its own** is a small settings file holding the three checkbox states - nothing else, and never any of your text. It is created with owner-only permissions:
+  - Windows: `%APPDATA%\SpeechToText\settings.json`
+  - macOS: `~/Library/Application Support/SpeechToText/settings.json`
+  - Linux: `~/.config/SpeechToText/settings.json`
+
+  Delete it any time; the app just goes back to its defaults.
 - **Signed, reproducible releases:** Windows binaries are code-signed (Azure Trusted Signing, verified publisher), built by GitHub Actions from
   the exact versions in `requirements-lock.txt` - the build logs are public in the Actions tab - and published with SHA-256 checksums.
 - **Supply chain:** `requirements-lock.txt` pins exact versions *and* artifact hashes, installed with `--require-hashes`, so a hijacked re-upload    to PyPI fails the build rather than shipping inside a signed binary. Every GitHub Action is pinned to a commit SHA instead of a movable tag,       keeping a compromised action away from the signing secrets. Dependabot updates both weekly. To report a vulnerability.
@@ -403,11 +411,12 @@ src/
   transcriber.py     faster-whisper wrapper + language auto-detection
   translator.py      EN<->ES translation with sentence-aware chunking
   languages.py       the pane languages and the pairing between them
+  settings.py        remembers the checkboxes between launches
   transcript.py      entry numbering and the "#3 · 2:41 PM" headers
   dispatch.py        worker thread -> Tk main loop hand-off
   hotkeys.py         global hotkeys, and the no-op stand-in off Windows
   app.py             CustomTkinter two-pane UI, mini mode, recording flow
-tests/               pytest suite (110 tests across every module above)
+tests/               pytest suite (159 tests across every module above)
 scripts/
   build_release.ps1  Windows: PyInstaller -> the two release zips
   build_macos.sh     macOS: PyInstaller -> .app -> .dmg (unsigned)
