@@ -68,7 +68,9 @@ Apple M-something. If it says Intel, use Option B instead.
 
 1. Go to [**Releases**](../../releases/latest) and download
    **`SpeechToText-macOS-AppleSilicon.dmg`** (~81 MB).
-2. Open it and drag **SpeechToText** onto **Applications**.
+2. Open it and drag **SpeechToText** onto **Applications**. (There is a second
+   icon, *Modo espanol* - only drag that one too if you dictate in Spanish and
+   want correct accents. See [Better Spanish](#better-spanish-if-you-dictate-mostly-in-spanish).)
 3. Open it from Applications. **macOS will refuse the first time** and say it
    "could not verify" the app. That is expected, not a broken download. See
    [macOS will block the first launch](#macos-will-block-the-first-launch)
@@ -276,19 +278,30 @@ permanently changed, and both share the same window and settings.
 
 ### On Mac
 
-There is no double-click version yet, so this one needs the Terminal. Copy this
-line, paste it into Terminal, and press Return:
+The disk image contains **two** icons. Drag **both** to Applications:
+
+- **SpeechToText** - the normal app
+- **Modo espanol** - the same app, started with the better Spanish model
+
+Open **Modo espanol** when you want correct Spanish punctuation, and
+SpeechToText the rest of the time. Nothing is permanently changed; they are the
+same program.
+
+> **You will have to allow *Modo espanol* through Gatekeeper too**, the same
+> way you did for the app itself, because macOS checks each one separately. See
+> [macOS will block the first launch](#macos-will-block-the-first-launch). You
+> do it once.
+
+Prefer the Terminal? This does the same thing without the second icon:
 
 ```bash
 open --env STT_MODEL=medium -a SpeechToText
 ```
 
-That starts the app once with the better Spanish model. The next time you open
-the app normally, it goes back to the faster one. If you want it every time,
-add `export STT_MODEL=medium` to your `~/.zshrc`.
+### Did it work?
 
-To check it worked, look at the small grey text in the bottom-right of the
-window: it should say **`Whisper medium`** rather than `Whisper small`.
+Look at the small grey text in the bottom-right of the window. It should say
+**`Whisper medium`** instead of `Whisper small`.
 
 ### Why is this not just the default?
 

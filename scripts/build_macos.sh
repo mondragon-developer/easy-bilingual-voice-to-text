@@ -120,6 +120,20 @@ trap 'rm -rf "$staging"' EXIT
 cp -R "$app" "$staging/"
 ln -s /Applications "$staging/Applications"
 
+# "Modo espanol.app": a launcher that starts the real app with the medium
+# model, for users who want correct Spanish accents and inverted question
+# marks without touching a terminal. It does not contain the app, it only
+# opens it, so it costs well under a megabyte rather than duplicating the
+# bundle. osacompile is used because a hand-built bundle whose executable is a
+# shell script will not launch on current macOS (LaunchServices -10669).
+spanish_app="$staging/Modo espanol.app"
+osacompile -o "$spanish_app" "$proj/scripts/spanish_mode.applescript"
+# Sign after writing, exactly as with the main app: any edit to a bundle
+# invalidates its signature, and an unsigned arm64 binary will not launch.
+codesign --force --deep --sign - "$spanish_app"
+codesign --verify --deep --strict "$spanish_app"
+echo "Spanish launcher: $(du -sk "$spanish_app" | cut -f1) KB"
+
 hdiutil create \
     -volname "Speech to Text $version" \
     -srcfolder "$staging" \

@@ -1,79 +1,182 @@
-## Speech to Text v2.1.6 - a Mac download, at last
+## Speech to Text v2.1.7 - better Spanish, without touching a terminal
 
-Until now, running this on a Mac meant cloning the repo and installing a
-Python that Apple does not ship, because the built-in `python3` bundles a Tk
-that cannot draw the window. This release adds a **macOS disk image** that
-carries its own Python and its own Tk, so none of that applies: download,
-drag to Applications, open.
+Dictate in **English or Spanish**, get both languages side by side, with all
+speech recognition running on your own computer.
 
-Windows is unchanged and still signed.
+This release fixes four bugs and makes one thing easier: getting correct
+Spanish punctuation - the accent in *Mondragón* and the opening **¿** on a
+question - now takes one double-click instead of an environment variable.
 
-### Download for Mac
+---
 
-| You have | Download | Size |
+# Which file do I download?
+
+| Your computer | Download this | Size |
 |---|---|---|
-| A Mac with **Apple Silicon** (M1 or later) | `SpeechToText-macOS-AppleSilicon.dmg` | ~81 MB |
-| An **Intel** Mac | Source, see the [README](README.md#install---macos) | - |
+| **Mac** with Apple Silicon (M1 or later) | `SpeechToText-macOS-AppleSilicon.dmg` | ~81 MB |
+| **Windows PC** with an NVIDIA graphics card | `SpeechToText-Windows-GPU.zip` | ~1.5 GB |
+| **Any other Windows PC** | `SpeechToText-Windows-CPU.zip` | ~98 MB |
+| An **Intel** Mac | No download yet - see the [README](README.md#install---macos) | - |
 
-**It is not signed by Apple, so macOS will refuse to open it the first time.**
-Signing requires a paid Apple Developer account, which this project does not
-have yet. Nothing is wrong with the download; macOS simply cannot tell who
-built it. To allow it, once:
+Not sure which Mac you have? Apple menu > **About This Mac**. If the *Chip*
+line says Apple M-something, you have Apple Silicon.
 
-- **macOS 15 Sequoia and later:** double-click, accept the refusal, then open
-  *System Settings > Privacy & Security*, scroll to the message about
-  SpeechToText, and click **Open Anyway**.
-- **macOS 14 and earlier:** right-click the app > **Open** > **Open**.
+---
 
-If you would rather not run unsigned software, the README's Option B builds
-the identical app from source on your own machine. Either way you can check
-the download against `checksums.txt` below:
+# Installing on a Mac
+
+**1.** Download `SpeechToText-macOS-AppleSilicon.dmg` and open it.
+
+**2.** You will see two app icons and an Applications folder. Drag
+**SpeechToText** onto **Applications**.
+
+> There is a second icon called **Modo espanol**. Only drag that one too if you
+> dictate in Spanish - see *Better Spanish* below. English-only users can
+> ignore it completely.
+
+**3.** Open **SpeechToText** from your Applications folder.
+
+**4. macOS will refuse to open it.** You will see:
+
+> *"Apple could not verify SpeechToText is free of malware that may harm your
+> Mac or compromise your privacy."*
+
+**This is expected. Nothing is wrong with the download.** The app is not
+registered with Apple's paid developer programme, so macOS cannot confirm who
+built it. To allow it:
+
+- Click **Done** on that message. **Do not click *Move to Trash*.**
+- Open **System Settings** > **Privacy & Security**.
+- Scroll down to the message about SpeechToText and click **Open Anyway**.
+- Authenticate with Touch ID or your password.
+- **Open the app again.** This second attempt is the one that works.
+
+That last step is the one people miss. *Open Anyway* only grants permission -
+it does not start the app.
+
+**5.** Click **Allow** when macOS asks for the microphone.
+
+**6.** The first launch downloads the speech model once, about 460 MB. After
+that it starts in seconds.
+
+---
+
+# Installing on Windows
+
+**1.** Download the zip that matches your PC from the table above.
+
+**2.** Unzip it anywhere.
+
+**3.** Open the folder and run **`SpeechToText.exe`**.
+
+**4.** The first launch downloads the speech model once - about 3 GB on the GPU
+build, about 460 MB on the CPU build. After that it starts in seconds.
+
+Upgrading from an older version? Unzip over your existing folder. The model
+stays where it is and is not downloaded again.
+
+Windows builds are **digitally signed** (verified publisher: Jose Mondragon,
+via Azure Trusted Signing), so you will not see a security warning.
+
+---
+
+# Better Spanish
+
+**Most people can skip this.** The app already spells every Spanish word
+correctly. What it misses on some computers is two pieces of Spanish
+punctuation: the accent in a name like **Mondragón**, and the opening **¿** on
+a question.
+
+Whether this affects you depends on your computer, not on anything you chose:
+
+| Your computer | Spanish accents and ¿ |
+|---|---|
+| Windows with an NVIDIA graphics card | **Already correct.** Nothing to do. |
+| Any other Windows PC | Missing - fix below |
+| Any Mac | Missing - fix below |
+
+### The fix on Mac
+
+Open **Modo espanol** instead of SpeechToText. That is the whole change.
+
+macOS will block it on first open exactly as it did the main app, because it
+checks each app separately. Do the **Open Anyway** steps from above once more
+for this one.
+
+### The fix on Windows
+
+In the folder where you unzipped the app, next to `SpeechToText.exe`, there is
+a file called **`Modo espanol.bat`**. Double-click **that** instead of the exe.
+
+*(It is only in the CPU download. The GPU download does not need it.)*
+
+### Either way
+
+The first time, this downloads a larger speech model - about 1.4 GB - and then
+starts normally every time after. Transcribing takes a few seconds instead of
+one or two, in exchange for correct Spanish punctuation.
+
+To go back to normal, just open the app the usual way. Nothing is permanently
+changed, and both use the same window and settings.
+
+**Did it work?** The small grey text in the bottom-right of the window should
+say `Whisper medium` instead of `Whisper small`.
+
+### Why is this not the default?
+
+Because on English the two produce **byte-for-byte identical** text - we
+measured it - so making it the default would make every English speaker wait
+three times as long for exactly the same words.
+
+---
+
+# What else changed
+
+**Four bugs fixed**, two of which could leave the app looking frozen:
+
+- **A stalled translation no longer breaks recording.** On a network that
+  accepts the connection but never replies - hotel and airport wifi is the
+  classic case - the app used to wait forever, leaving the Record button
+  disabled with no explanation until you restarted it. It now gives up after
+  20 seconds and says the translation failed, keeping your transcript.
+- **One internal error no longer stops the window updating.** A single failure
+  used to leave the app unable to receive anything further from its background
+  work, so it appeared frozen while still running.
+- **Recordings now stop at 30 minutes** instead of growing until your computer
+  runs out of memory. Whatever was captured is transcribed as usual.
+- A rare timing fault when a global hotkey was pressed at the exact moment the
+  speech model finished loading.
+
+**A speech model that quietly broke Spanish was removed** from the options. It
+was English-only, and selecting it produced English-ish nonsense from Spanish
+audio instead of an error.
+
+**Under the hood:** the code was reorganised into smaller modules and the test
+suite grew from **60 to 114 tests**. No change to how the app behaves.
+
+---
+
+# What the app does
+
+Dictate in **English or Spanish** with automatic language detection. Whisper
+transcribes it **on your own machine** - your audio is never uploaded and never
+written to a file. Both languages appear side by side, fully editable, and the
+text lands on your clipboard automatically. There is a mini always-on-top mode,
+and global hotkeys (`Ctrl+Alt+R`) on Windows.
+
+Untick **Translate (online)** and the app makes **zero** network connections.
+Translation is the only thing that ever leaves your computer, and it sends text
+only, never audio. See [Privacy & security](README.md#privacy--security), or
+the plain-English guide, [How this app works](HOW_IT_WORKS.md).
+
+# Verifying your download
+
+Every file's SHA-256 is listed in `checksums.txt` attached below.
 
 ```bash
 shasum -a 256 ~/Downloads/SpeechToText-macOS-AppleSilicon.dmg
 ```
 
-First launch downloads the `small` speech model once (~460 MB); after that it
-starts in seconds. On an M5 Pro it transcribes at roughly **7x real time**,
-about 2 seconds for a 14-second dictation, with punctuation, accents and
-EN/ES detection all correct.
-
-### Smaller install from source on macOS
-
-`pip install -r requirements.txt` no longer installs the `keyboard` package
-on macOS. Global hotkeys there need root, so the app has skipped them since
-v2.1.5 and the package was never used - but it pulled in the entire `pyobjc`
-suite to support code that never ran.
-
-### The README now shows the app
-
-Two screenshots, both from a real session rather than mock-ups: the app after
-one English and one Spanish dictation, and the mini pill floating over the
-desktop.
-
-### Which download?
-
-| You have | Download | Size |
-|---|---|---|
-| A PC with an **NVIDIA GPU** | `SpeechToText-Windows-GPU.zip` | ~1.5 GB |
-| **Any other Windows PC** | `SpeechToText-Windows-CPU.zip` | ~95 MB |
-| A Mac with **Apple Silicon** | `SpeechToText-macOS-AppleSilicon.dmg` | ~81 MB |
-| An Intel Mac, or you prefer Python | *Source code* below + see the [README](README.md) | - |
-
-**Install on Windows:** unzip, then run `SpeechToText.exe`. The first launch
-downloads the speech model once (GPU ~3 GB, CPU ~460 MB); after that it starts
-in seconds. Upgrading: unzip over your existing folder, the model stays put.
-
-Windows builds remain **digitally signed** (verified publisher: Jose
-Mondragon, via Azure Trusted Signing) with SHA-256 `checksums.txt` attached,
-built from hash-pinned dependencies so a tampered package cannot reach a
-signed binary.
-
-### What the app does
-
-Dictate in **English or Spanish** with automatic language detection, local
-Whisper transcription (audio never leaves your machine), both languages side
-by side, editable, auto-copy to clipboard, global hotkeys (`Ctrl+Alt+R`, on
-Windows), and a mini always-on-top mode. Untick **Translate (online)** and
-the app makes zero network calls; see
-[Privacy & security](README.md#privacy--security).
+```powershell
+Get-FileHash SpeechToText-Windows-CPU.zip
+```
