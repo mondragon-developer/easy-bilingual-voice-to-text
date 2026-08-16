@@ -29,10 +29,17 @@ CPU_MODEL_NAME = "small"
 #: Values accepted from the STT_MODEL environment variable. Restricting to
 #: known Whisper names prevents the env var from pointing the downloader at
 #: an arbitrary HuggingFace repo.
+#:
+#: The ``.en`` names are English-only by design and are listed anyway: someone
+#: who types ``small.en`` has said what they want. What must stay out are
+#: English-only models whose names do not say so. ``distil-large-v3`` was here
+#: and was removed: HuggingFace reports ``language: ['en']`` for it, so on this
+#: bilingual app it does not fail on Spanish audio, it silently returns
+#: English-ish mush. Same for ``distil-large-v2`` and ``distil-large-v3.5``.
+#: If a multilingual distil model ships later, check its card before adding it.
 ALLOWED_MODELS = frozenset({
     "tiny", "tiny.en", "base", "base.en", "small", "small.en",
     "medium", "medium.en", "large-v2", "large-v3", "large-v3-turbo",
-    "distil-large-v3",
 })
 
 

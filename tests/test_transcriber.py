@@ -69,6 +69,26 @@ class TestModelAllowlist:
         # STT_MODEL must not be able to point at any random HF repo.
         assert "evil-org/backdoored-model" not in ALLOWED_MODELS
 
+    @pytest.mark.parametrize("model", ["distil-large-v2", "distil-large-v3",
+                                       "distil-large-v3.5"])
+    def test_silently_english_only_models_are_rejected(self, model):
+        """These are English-only but nothing in the name says so.
+
+        On a bilingual app they are worse than a rejected value: Spanish audio
+        comes back as English-ish mush instead of raising, so the user sees a
+        bad transcript with no clue why. The ``.en`` names stay allowed because
+        someone typing ``small.en`` has said what they want.
+        """
+        from src.transcriber import ALLOWED_MODELS
+        assert model not in ALLOWED_MODELS
+
+    def test_every_allowed_multilingual_name_lacks_the_en_suffix(self):
+        """Sanity check that the allowlist splits cleanly into two groups."""
+        from src.transcriber import ALLOWED_MODELS
+        multilingual = {m for m in ALLOWED_MODELS if not m.endswith(".en")}
+        assert multilingual == {"tiny", "base", "small", "medium",
+                                "large-v2", "large-v3", "large-v3-turbo"}
+
 
 class TestNvidiaDllDirs:
     def test_missing_nvidia_package_is_harmless(self):

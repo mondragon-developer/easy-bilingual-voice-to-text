@@ -229,7 +229,17 @@ every Mac and could crash on startup.
 
 - **Microphone permission**: the first recording triggers a permission prompt. If you dismissed it, enable it by hand in *System Settings > Privacy & Security > Microphone* - tick **SpeechToText** if you installed the `.dmg`, or your terminal if you run from source.
 - **Speed**: there is no NVIDIA CUDA on Mac, so transcription runs on CPU and the app automatically selects the lighter `small` model. Measured on an M5 Pro, that transcribes roughly **7x faster than real time**: about 2 seconds for a 14-second dictation, with punctuation, accents and EN/ES detection all correct.
-- **`small` is the right default.** `STT_MODEL=medium` is roughly 3x slower for identical output on clean dictation. Reach for it only if the app keeps mishearing you on hard audio (strong accent, background noise, unusual technical vocabulary).
+- **`small` is the right default, but `medium` writes better Spanish.** Measured on an M5 Pro against the same `say`-generated clips (16.6s English, 20.1s Spanish):
+
+  | `STT_MODEL` | English | Spanish | Spanish `¿` and accents |
+  |---|---|---|---|
+  | `small` (default) | 2.1s, 7.8x real time | 2.5s, 7.9x | **dropped** |
+  | `medium` | 6.0s, 2.8x | 7.0s, 2.9x | kept |
+  | `large-v3-turbo` | 8.1s, 2.1x | 8.4s, 2.4x | kept |
+
+  English is identical across all three. On Spanish, `small` writes `Puede manejar... Mondragon.` where `medium` writes `¿Puede manejar... Mondragón?` - it loses the inverted question mark and the accent on a proper noun. If you dictate mostly Spanish and care about that, `STT_MODEL=medium` is worth the extra seconds; otherwise `small` is three times faster for the same English.
+
+- **`large-v3-turbo` is not worth it on CPU.** It is the *slowest* of the three here and no more accurate than `medium`, because it keeps `large-v3`'s full-size encoder and only shrinks the decoder - and on short dictation clips the encoder is the bottleneck. Its speed advantage is a GPU-and-long-audio effect. It also costs 1.5 GB to download.
 - **Global hotkeys** (Ctrl+Alt+R from other apps) are not available on macOS without running as root, so the app skips them entirely there. In-app shortcuts (Ctrl+R / Ctrl+S) still work.
 
 A *signed* Mac download (no Gatekeeper warning), an Intel build, working global
