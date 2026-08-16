@@ -15,6 +15,10 @@ its own numbered entry (`#1`, `#2`) with the time, and the date appears on the
 first entry of the day. Those headers are for reading only - they are never
 copied or pasted.
 
+> **New here, or not a programmer?** [**How this app works, in plain
+> English**](HOW_IT_WORKS.md) explains what it does, the problem it solves, and
+> exactly where your voice goes, with diagrams and no jargon.
+
 ## Features
 
 - 🎙️ **Auto language detection** - speak EN or ES, no switch to flip
