@@ -116,29 +116,44 @@ class Transcriber:
                 self.model_name = override or MODEL_NAME
                 self.model = WhisperModel(self.model_name, device="cuda",
                                           compute_type="float16")
+                # The warm-up has to sit inside this try. Constructing the
+                # CUDA model only needs the driver; cuBLAS is loaded at the
+                # first matmul. On a PC with an NVIDIA driver but no CUDA
+                # DLLs (the CPU zip), the construction succeeds, the app
+                # reports GPU, and the first recording dies with "Library
+                # cublas64_12.dll is not found". Running one pass here turns
+                # that into the CPU fallback it should have been.
+                self._warm_up(np)
                 self.device_label = "GPU (CUDA, float16)"
             except Exception as exc:
                 self.gpu_error = str(exc)
+                self.model = None
 
         if self.model is None:
             self.model_name = override or CPU_MODEL_NAME
             self.model = WhisperModel(self.model_name, device="cpu",
                                       compute_type="int8")
             self.device_label = "CPU (int8)"
+            self._warm_up(np)
 
         # Batched pipeline decodes VAD-split chunks in parallel - much faster
         # than sequential decoding, especially for longer dictations.
         self.pipeline = BatchedInferencePipeline(model=self.model)
+        return self.device_label
 
-        # Warm up: the first pass through the model triggers one-time cuDNN
-        # kernel selection. Paying that cost here (on 1s of silence) keeps the
-        # user's first real transcription fast.
+    def _warm_up(self, np):
+        """Run one pass over a second of silence.
+
+        The first pass triggers one-time cuDNN kernel selection, so paying it
+        here keeps the user's first real transcription fast. It is also the
+        earliest point at which a GPU that cannot actually compute reveals
+        itself, which is why ``load`` calls it before trusting the device.
+        """
         warmup = np.zeros(16000, dtype=np.float32)
         segments, _ = self.model.transcribe(warmup, language="en", beam_size=1,
                                             vad_filter=False)
         for _ in segments:
             pass
-        return self.device_label
 
     def transcribe(self, audio):
         """Transcribe recorded audio to text.

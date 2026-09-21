@@ -1,13 +1,20 @@
-## Speech to Text v2.1.9 - it remembers your settings now
+## Speech to Text v2.1.10 - the CPU build no longer pretends it has a GPU
 
 Dictate in **English or Spanish**, get both languages side by side, with all
 speech recognition running on your own computer.
 
-**New in this release:** the three checkboxes at the bottom of the window stay
-where you put them. Set them once and they are the same next time you open the
-app.
+**Fixed in this release:** on a Windows PC with an NVIDIA driver, the *CPU*
+zip used to start up saying it was running on the GPU, and then every recording
+failed with *Library cublas64_12.dll is not found or cannot be loaded*. It now
+notices during startup that the CUDA libraries are missing and runs on the CPU,
+with the usual *running on CPU* notice. If you have an NVIDIA card, the GPU zip
+is still the one to download - it is much faster.
 
-Also included, from v2.1.8: **Always copy English** - tick it and whatever you
+Also included, from v2.1.9: the three checkboxes at the bottom of the window
+stay where you put them. Set them once and they are the same next time you open
+the app.
+
+And from v2.1.8: **Always copy English** - tick it and whatever you
 dictate, English or Spanish, the *English* version is what lands on your
 clipboard. Speak Spanish, paste English.
 

@@ -17,7 +17,7 @@ from src.settings import Settings
 
 
 @pytest.fixture(scope="module")
-def _shared_app():
+def _shared_app(tmp_path_factory):
     """One SpeechToTextApp for the whole module.
 
     Tk misbehaves when many interpreters are created and destroyed in a
@@ -26,14 +26,18 @@ def _shared_app():
 
     The transcriber and the hotkey manager are handed in rather than patched:
     the app takes its collaborators as constructor arguments, so a test can
-    substitute them directly.
+    substitute them directly. Settings get a scratch file too: without it the
+    window reads the developer's real settings.json and any test that expects
+    a default fails on a machine where that default was changed.
     """
     fake = MagicMock()
     fake.load.return_value = "GPU (test)"
     fake.gpu_error = None
     fake.model_name = "large-v3"
+    settings = Settings(tmp_path_factory.mktemp("settings") / "settings.json")
     application = SpeechToTextApp(transcriber=fake,
-                                  hotkeys=NullHotkeyManager())
+                                  hotkeys=NullHotkeyManager(),
+                                  settings=settings)
     # Let the model-load thread finish and its after() callbacks run.
     for _ in range(50):
         application.update()

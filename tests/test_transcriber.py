@@ -115,3 +115,84 @@ class TestNvidiaDllDirs:
         phantom.__path__ = [r"C:\does\not\exist\nvidia"]
         with patch.dict(sys.modules, {"nvidia": phantom}):
             _add_nvidia_dll_dirs()  # must not raise
+
+
+class _FakeModel:
+    """Stand-in for WhisperModel: records how it was built, fails on demand."""
+
+    def __init__(self, name, device, compute_type, fail_on_transcribe=None):
+        self.name = name
+        self.device = device
+        self.compute_type = compute_type
+        self.fail_on_transcribe = fail_on_transcribe
+
+    def transcribe(self, audio, **kwargs):
+        if self.fail_on_transcribe:
+            raise RuntimeError(self.fail_on_transcribe)
+        return iter(()), SimpleNamespace(language="en")
+
+
+def _fake_faster_whisper(cuda_failure=None, cpu_failure=None,
+                         cuda_construct_failure=None):
+    """Build a faster_whisper module whose CUDA model breaks as instructed."""
+    def whisper_model(name, device, compute_type):
+        if device == "cuda":
+            if cuda_construct_failure:
+                raise RuntimeError(cuda_construct_failure)
+            return _FakeModel(name, device, compute_type, cuda_failure)
+        return _FakeModel(name, device, compute_type, cpu_failure)
+
+    module = types.ModuleType("faster_whisper")
+    module.WhisperModel = whisper_model
+    module.BatchedInferencePipeline = lambda model: SimpleNamespace(model=model)
+    return module
+
+
+class TestLoadFallback:
+    CUBLAS = "Library cublas64_12.dll is not found or cannot be loaded"
+
+    def _load(self, module, platform="win32"):
+        with patch.dict(sys.modules, {"faster_whisper": module}), \
+                patch("src.transcriber._add_nvidia_dll_dirs"), \
+                patch("src.transcriber.sys") as fake_sys:
+            fake_sys.platform = platform
+            tr = Transcriber()
+            label = tr.load()
+        return tr, label
+
+    def test_gpu_that_cannot_compute_falls_back_to_cpu(self):
+        # Regression (v2.1.9 CPU build on a PC with an NVIDIA driver): the
+        # CUDA model constructs fine because cuBLAS is only loaded at the
+        # first matmul, so the app reported GPU and every recording failed.
+        tr, label = self._load(_fake_faster_whisper(cuda_failure=self.CUBLAS))
+        assert label == "CPU (int8)"
+        assert tr.model.device == "cpu"
+        assert tr.model_name == "small"
+        assert self.CUBLAS in tr.gpu_error
+        assert tr.pipeline.model is tr.model
+
+    def test_gpu_that_cannot_construct_falls_back_to_cpu(self):
+        tr, label = self._load(_fake_faster_whisper(
+            cuda_construct_failure="CUDA driver version is insufficient"))
+        assert label == "CPU (int8)"
+        assert "insufficient" in tr.gpu_error
+
+    def test_working_gpu_is_kept(self):
+        tr, label = self._load(_fake_faster_whisper())
+        assert label == "GPU (CUDA, float16)"
+        assert tr.model.device == "cuda"
+        assert tr.model_name == "large-v3"
+        assert tr.gpu_error is None
+
+    def test_macos_never_tries_cuda(self):
+        tr, label = self._load(_fake_faster_whisper(cuda_failure=self.CUBLAS),
+                               platform="darwin")
+        assert label == "CPU (int8)"
+        assert tr.gpu_error is None
+
+    def test_cpu_failure_still_raises(self):
+        # There is nothing left to fall back to; the UI shows this one.
+        module = _fake_faster_whisper(cuda_failure=self.CUBLAS,
+                                      cpu_failure="model download interrupted")
+        with pytest.raises(RuntimeError, match="download interrupted"):
+            self._load(module)
