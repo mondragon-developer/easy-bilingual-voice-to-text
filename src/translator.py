@@ -41,6 +41,19 @@ ENGINE_GOOGLE = "Google"
 ENGINE_MYMEMORY = "MyMemory"
 ENGINE_OFFLINE = "offline"
 
+#: The one ``LocalTranslator`` every translation shares, created on first
+#: use. It caches a loaded CTranslate2 model per direction, so making a new
+#: one per call would reload the model for every recording.
+_shared_local = None
+
+
+def _default_local():
+    global _shared_local
+    if _shared_local is None:
+        from .local_mt import LocalTranslator
+        _shared_local = LocalTranslator()
+    return _shared_local
+
 
 @dataclass(frozen=True)
 class Translation:
@@ -187,8 +200,9 @@ def translate(text: str, source: str, target: str, mode: str = "online",
         target: The other pane's language.
         mode: ``"offline"`` or ``"online"``; ``"off"`` is an error here,
             because the caller should not have asked.
-        local: A ``LocalTranslator``. Created on first use when omitted, so
-            importing this module never loads CTranslate2.
+        local: A ``LocalTranslator``. When omitted, one shared instance is
+            created on first use and kept, so importing this module never
+            loads CTranslate2 and a loaded model is never loaded twice.
         progress: Passed to the offline model download when one happens.
 
     Returns:
@@ -216,8 +230,7 @@ def translate(text: str, source: str, target: str, mode: str = "online",
         try:
             if func is None:
                 if local is None:
-                    from .local_mt import LocalTranslator
-                    local = LocalTranslator()
+                    local = _default_local()
                 result = local.translate(text, source, target,
                                          progress=progress)
             else:

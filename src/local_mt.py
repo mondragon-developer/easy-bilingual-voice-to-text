@@ -69,11 +69,17 @@ def models_dir() -> Path:
     return default_path().parent / "models"
 
 
+#: What ``_Engine`` opens. A folder missing any of these is not a model.
+_REQUIRED_FILES = ("model.bin", "source.spm", "target.spm")
+
+
+def _is_complete(folder) -> bool:
+    return all((Path(folder) / name).is_file() for name in _REQUIRED_FILES)
+
+
 def is_installed(spec: ModelSpec, root=None) -> bool:
     """True when every file the engine needs is present for ``spec``."""
-    folder = Path(root or models_dir()) / spec.name
-    return all((folder / name).is_file()
-               for name in ("model.bin", "source.spm", "target.spm"))
+    return _is_complete(Path(root or models_dir()) / spec.name)
 
 
 def _safe_members(archive: zipfile.ZipFile, dest: Path):
@@ -157,13 +163,17 @@ def install(spec: ModelSpec, root=None, progress=None, session=None) -> Path:
                 with archive.open(member) as src, open(target, "wb") as dst:
                     shutil.copyfileobj(src, dst)
         # The zip holds the files at its root; tolerate one wrapping folder.
+        # Every file the engine opens must be there, not just the weights:
+        # a model without its tokenisers would install and then fail on
+        # every translation.
         inner = scratch
-        if not (inner / "model.bin").is_file():
+        if not _is_complete(inner):
             subdirs = [p for p in scratch.iterdir() if p.is_dir()]
-            if len(subdirs) == 1 and (subdirs[0] / "model.bin").is_file():
+            if len(subdirs) == 1 and _is_complete(subdirs[0]):
                 inner = subdirs[0]
-        if not (inner / "model.bin").is_file():
-            raise ValueError(f"{spec.name}: archive does not contain a model")
+        if not _is_complete(inner):
+            raise ValueError(
+                f"{spec.name}: archive does not contain a complete model")
         if final.exists():
             shutil.rmtree(final)
         os.replace(inner, final)

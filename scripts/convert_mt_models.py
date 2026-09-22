@@ -10,7 +10,7 @@ the zips to the GitHub release tagged ``models`` and paste the new hashes:
     python scripts/convert_mt_models.py [output_dir]
 
 Needs transformers and torch, which the app itself never ships: the whole
-point of converting once is that users get an 68 MB zip per direction instead
+point of converting once is that users get a 68 MB zip per direction instead
 of a 300 MB PyTorch checkpoint and the libraries to read it.
 """
 

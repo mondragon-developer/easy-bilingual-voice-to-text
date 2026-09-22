@@ -274,8 +274,17 @@ class TestTranslateChain:
     def test_the_local_translator_is_created_on_demand(self, engines):
         """Nothing imports CTranslate2 until a translation asks for it."""
         google, mymemory, _ = engines
-        with patch("src.local_mt.LocalTranslator") as cls:
+        with patch("src.translator._shared_local", None),              patch("src.local_mt.LocalTranslator") as cls:
             cls.return_value.translate.return_value = "Hello."
             result = translate("Hola.", "es", "en", "offline")
         assert result == Translation("Hello.", ENGINE_OFFLINE)
         cls.assert_called_once_with()
+
+    def test_the_local_translator_is_shared_between_calls(self, engines):
+        """A new instance per call would reload the model every recording."""
+        with patch("src.translator._shared_local", None),              patch("src.local_mt.LocalTranslator") as cls:
+            cls.return_value.translate.return_value = "Hello."
+            translate("Hola.", "es", "en", "offline")
+            translate("Adiós.", "es", "en", "offline")
+        cls.assert_called_once_with()
+        assert cls.return_value.translate.call_count == 2

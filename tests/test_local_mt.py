@@ -143,6 +143,19 @@ class TestInstall:
             install(spec, tmp_path, session=_session(payload))
         assert list(tmp_path.iterdir()) == []
 
+    @pytest.mark.parametrize("missing", ["source.spm", "target.spm"])
+    def test_an_archive_missing_a_tokeniser_is_rejected(self, tmp_path, missing):
+        """Weights alone would install, and then every translation would
+        fail opening the tokeniser. Reject and clean up instead."""
+        names = tuple(n for n in ("model.bin", "source.spm", "target.spm")
+                      if n != missing)
+        payload = _zip_bytes(names=names)
+        spec = _spec(payload)
+        with pytest.raises(ValueError, match="complete model"):
+            install(spec, tmp_path, session=_session(payload))
+        assert list(tmp_path.iterdir()) == []
+        assert not is_installed(spec, tmp_path)
+
     def test_zip_slip_members_never_escape_the_models_folder(self, tmp_path):
         """A member named ../escape must not be written above the folder."""
         buf = io.BytesIO()
