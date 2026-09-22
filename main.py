@@ -44,8 +44,19 @@ def selftest() -> int:
         # One second of silence: exercises the full decode path.
         text, lang, prob, duration = transcriber.transcribe(
             np.zeros(16000, dtype=np.float32))
+
+        # The offline translator is the other native code path a frozen
+        # build can break: CTranslate2 loading a second model type, plus the
+        # sentencepiece extension. One real sentence through the es-en model
+        # proves both, at the cost of that model's one-time download.
+        from src.local_mt import LocalTranslator
+
+        translated = LocalTranslator().translate("Hola mundo.", "es", "en")
+        if not translated:
+            raise RuntimeError("offline translator returned nothing")
         _report(f"SELFTEST OK: model={transcriber.model_name} "
                 f"device={device} (text={text!r}, lang={lang}) "
+                f"offline-mt={translated!r} "
                 f"ui=customtkinter {ctk.__version__}")
         return 0
     except Exception as exc:  # noqa: BLE001 - report anything that broke

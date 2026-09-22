@@ -25,9 +25,21 @@ APP_DIR_NAME = "SpeechToText"
 #: ignored, so a hand-edited or downgraded file cannot inject unknown keys.
 DEFAULTS = {
     "autocopy": True,
-    "translate": True,
+    "translate_mode": "offline",
     "always_copy_english": False,
 }
+
+#: Settings whose value must be one of a fixed set. A string of the right
+#: type is not enough: "onlien" would otherwise be accepted and then match
+#: no mode at all.
+CHOICES = {
+    "translate_mode": ("off", "offline", "online"),
+}
+
+#: The pre-2.2 "translate" checkbox, as it maps onto today's modes. Read only
+#: when the file has no "translate_mode" yet, so an upgrade keeps the user's
+#: choice: ticked users had Google, and still do.
+_LEGACY_TRANSLATE = {True: "online", False: "off"}
 
 
 def default_path() -> Path:
@@ -80,8 +92,15 @@ class Settings:
             found = stored.get(key, default)
             # Only accept the type we expect. A string "false" is not False,
             # and silently coercing it would turn a typo into a setting.
-            if isinstance(found, type(default)):
-                values[key] = found
+            if not isinstance(found, type(default)):
+                continue
+            if key in CHOICES and found not in CHOICES[key]:
+                continue
+            values[key] = found
+        if "translate_mode" not in stored:
+            legacy = stored.get("translate")
+            if isinstance(legacy, bool):
+                values["translate_mode"] = _LEGACY_TRANSLATE[legacy]
         return values
 
     def save(self, values: dict) -> bool:

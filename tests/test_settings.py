@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.settings import DEFAULTS, Settings, default_path
+from src.settings import CHOICES, DEFAULTS, Settings, default_path
 
 
 @pytest.fixture
@@ -26,16 +26,61 @@ class TestLoading:
         assert store.load() == DEFAULTS
 
     def test_saved_values_come_back(self, store):
-        store.save({"autocopy": False, "translate": False,
+        store.save({"autocopy": False, "translate_mode": "online",
                     "always_copy_english": True})
-        assert store.load() == {"autocopy": False, "translate": False,
+        assert store.load() == {"autocopy": False, "translate_mode": "online",
                                 "always_copy_english": True}
 
     def test_a_missing_key_falls_back_to_its_default(self, store):
         store.path.write_text(json.dumps({"autocopy": False}), encoding="utf-8")
         loaded = store.load()
         assert loaded["autocopy"] is False
-        assert loaded["translate"] == DEFAULTS["translate"]
+        assert loaded["translate_mode"] == DEFAULTS["translate_mode"]
+
+    def test_offline_translation_is_the_default(self):
+        """Nothing leaves the machine unless someone chooses Online."""
+        assert DEFAULTS["translate_mode"] == "offline"
+
+    @pytest.mark.parametrize("mode", CHOICES["translate_mode"])
+    def test_every_mode_round_trips(self, store, mode):
+        store.save({**DEFAULTS, "translate_mode": mode})
+        assert store.load()["translate_mode"] == mode
+
+    @pytest.mark.parametrize("bad", ["onlien", "", "Online", "google"])
+    def test_a_mode_outside_the_choices_falls_back(self, store, bad):
+        """The right type is not enough: a string that matches no mode would
+        leave the app with a setting it cannot act on."""
+        store.path.write_text(json.dumps({"translate_mode": bad}),
+                              encoding="utf-8")
+        assert store.load()["translate_mode"] == DEFAULTS["translate_mode"]
+
+
+class TestUpgradingFromTheCheckbox:
+    """Before 2.2 the file held a boolean "translate". Ticked users had
+    Google, and an upgrade must not quietly move them somewhere else."""
+
+    def test_a_ticked_checkbox_becomes_online(self, store):
+        store.path.write_text(json.dumps({"translate": True}), encoding="utf-8")
+        assert store.load()["translate_mode"] == "online"
+
+    def test_an_unticked_checkbox_becomes_off(self, store):
+        store.path.write_text(json.dumps({"translate": False}), encoding="utf-8")
+        assert store.load()["translate_mode"] == "off"
+
+    def test_the_new_key_wins_when_both_are_present(self, store):
+        store.path.write_text(json.dumps({"translate": True,
+                                          "translate_mode": "offline"}),
+                              encoding="utf-8")
+        assert store.load()["translate_mode"] == "offline"
+
+    def test_a_non_boolean_legacy_value_is_ignored(self, store):
+        store.path.write_text(json.dumps({"translate": "yes"}), encoding="utf-8")
+        assert store.load()["translate_mode"] == DEFAULTS["translate_mode"]
+
+    def test_the_legacy_key_is_not_written_back(self, store):
+        store.path.write_text(json.dumps({"translate": True}), encoding="utf-8")
+        store.save(store.load())
+        assert "translate" not in json.loads(store.path.read_text(encoding="utf-8"))
 
     def test_unknown_keys_are_ignored(self, store):
         store.path.write_text(json.dumps({"autocopy": False, "nonsense": 1}),

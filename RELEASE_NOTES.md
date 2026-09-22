@@ -1,18 +1,32 @@
-## Speech to Text v2.1.10 - the CPU build no longer pretends it has a GPU
+## Speech to Text v2.2.0 - translation that works offline
 
-Dictate in **English or Spanish**, get both languages side by side, with all
-speech recognition running on your own computer.
+Dictate in **English or Spanish**, get both languages side by side, with
+everything - now including the translation - running on your own computer.
 
-**Fixed in this release:** on a Windows PC with an NVIDIA driver, the *CPU*
-zip used to start up saying it was running on the GPU, and then every recording
-failed with *Library cublas64_12.dll is not found or cannot be loaded*. It now
-notices during startup that the CUDA libraries are missing and runs on the CPU,
-with the usual *running on CPU* notice. If you have an NVIDIA card, the GPU zip
-is still the one to download - it is much faster.
+**New in this release:** the translator no longer needs the internet. The
+*Translate (online)* checkbox has become a three-way switch in the bottom bar:
 
-Also included, from v2.1.9: the three checkboxes at the bottom of the window
-stay where you put them. Set them once and they are the same next time you open
-the app.
+- **Offline** (the new default): the translation is made on your computer.
+  The first time each direction is used, the app downloads its model once
+  (about 70 MB, verified before it is unpacked); after that it works on a plane,
+  in a basement, or on a school network that Google has cut off.
+- **Online**: Google's wording, as before. If Google refuses - its free service
+  blocks whole networks that send it too much, which is what *translation
+  failed - are you online?* actually meant on a shared connection - the app
+  now tries MyMemory, then the offline model, instead of giving up.
+- **Off**: nothing is translated.
+
+Whatever happens, the status bar now says which translator answered, or why
+each one failed, instead of asking whether you are online.
+
+**Fixed on macOS:** the *Mini* button and the mini pill showed empty boxes
+where their icons should have been, and the pill sat inside a dark rectangle
+instead of floating on its own. Both buttons are plain words now, and the pill
+uses macOS's own window transparency. (Please report back if the corners still
+show - this could not be tested on real Apple hardware before release.)
+
+Also included, from v2.1.10: the CPU zip no longer claims to be running on the
+GPU on a PC that has an NVIDIA driver but not the CUDA libraries.
 
 And from v2.1.8: **Always copy English** - tick it and whatever you
 dictate, English or Spanish, the *English* version is what lands on your

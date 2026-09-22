@@ -6,14 +6,18 @@ would need a virtual display (e.g. Xvfb) on a headless CI runner.
 """
 
 import re
+import tkinter as tk
 from unittest.mock import MagicMock, patch
 
+import customtkinter as ctk
 import numpy as np
 import pytest
 
-from src.app import LANG_NAMES, MiniWidget, SpeechToTextApp
+from src.app import (LANG_NAMES, MINI_BG, MODE_LABELS, MiniWidget,
+                     SpeechToTextApp)
 from src.hotkeys import NullHotkeyManager
 from src.settings import Settings
+from src.translator import Translation, TranslationError
 
 
 @pytest.fixture(scope="module")
@@ -201,7 +205,7 @@ class TestProcessAudio:
 
     def test_full_flow_fills_both_panes(self, app):
         app.transcriber.transcribe.return_value = ("Hello.", "en", 0.99, 1.2)
-        app.translate = MagicMock(return_value="Hola.")
+        app.translate = MagicMock(return_value=Translation("Hola.", "offline"))
         app._process_audio(np.zeros(16000, dtype=np.float32), autocopy=False)
         for _ in range(20):
             app.update()
@@ -209,12 +213,34 @@ class TestProcessAudio:
         assert app._pane_text("es") == "Hola."
         assert "Done" in app.status_lbl.cget("text")
 
+    def test_the_translator_is_told_the_mode_and_both_languages(self, app):
+        app.transcriber.transcribe.return_value = ("Hola.", "es", 0.99, 1.2)
+        app.translate = MagicMock(return_value=Translation("Hello.", "Google"))
+        app._process_audio(np.zeros(16000, dtype=np.float32), autocopy=False,
+                           mode="online")
+        for _ in range(20):
+            app.update()
+        kwargs = app.translate.call_args.kwargs
+        assert app.translate.call_args.args == ("Hola.",)
+        assert (kwargs["source"], kwargs["target"], kwargs["mode"]) == \
+            ("es", "en", "online")
+        assert callable(kwargs["progress"])
+
+    def test_the_status_names_the_engine_that_translated(self, app):
+        app.transcriber.transcribe.return_value = ("Hola.", "es", 0.99, 1.2)
+        app.translate = MagicMock(return_value=Translation("Hello.", "MyMemory"))
+        app._process_audio(np.zeros(16000, dtype=np.float32), autocopy=False,
+                           mode="online")
+        for _ in range(20):
+            app.update()
+        assert "translated MyMemory" in app.status_lbl.cget("text")
+
     def test_translate_off_makes_no_network_call(self, app):
         app.transcriber.transcribe.return_value = ("Hello.", "en", 0.99, 1.2)
         fake_translate = MagicMock()
         app.translate = fake_translate
         app._process_audio(np.zeros(16000, dtype=np.float32),
-                           autocopy=False, do_translate=False)
+                           autocopy=False, mode="off")
         for _ in range(20):
             app.update()
         fake_translate.assert_not_called()
@@ -232,6 +258,39 @@ class TestProcessAudio:
         assert app.boxes["es"].get("1.0", "end-1c") == ""
         assert "translation failed" in app.status_lbl.cget("text")
 
+    def test_translation_failure_says_why_per_engine(self, app):
+        """"Are you online?" was the old message for every failure, including
+        a Google rate limit on a perfectly good connection."""
+        app.transcriber.transcribe.return_value = ("Hello.", "en", 0.99, 1.2)
+        app.translate = MagicMock(side_effect=TranslationError(
+            "Google: rate-limited (too many requests from this network today); "
+            "MyMemory: no connection"))
+        app._process_audio(np.zeros(16000, dtype=np.float32), autocopy=False,
+                           mode="online")
+        for _ in range(20):
+            app.update()
+        status = app.status_lbl.cget("text")
+        assert "Google: rate-limited" in status
+        assert "are you online" not in status
+
+    def test_download_progress_reaches_the_status_bar(self, app):
+        report = app._download_progress("es", "en")
+        report(34_000_000, 68_000_000)
+        for _ in range(5):
+            app.update()
+        status = app.status_lbl.cget("text")
+        assert "Downloading the offline translator" in status
+        assert "50%" in status and "68 MB" in status
+
+    def test_download_progress_only_posts_whole_percent_changes(self, app):
+        report = app._download_progress("es", "en")
+        with patch.object(app, "_ui") as ui:
+            report(1, 1000)
+            report(2, 1000)
+            report(10, 1000)
+            report(11, 1000)
+        assert ui.call_count == 2
+
 
 class TestAlwaysCopyEnglish:
     """With the option on, the clipboard gets English whatever was spoken.
@@ -245,12 +304,14 @@ class TestAlwaysCopyEnglish:
              translate_ok=True, do_translate=True, prefer_english=True,
              autocopy=True):
         app.transcriber.transcribe.return_value = (spoken, lang, 0.99, 1.2)
-        app.translate = (MagicMock(return_value=translation) if translate_ok
+        app.translate = (MagicMock(return_value=Translation(translation, "offline"))
+                         if translate_ok
                          else MagicMock(side_effect=ConnectionError("offline")))
         app.clipboard_clear()
         app.clipboard_append("SENTINEL")
         app._process_audio(np.zeros(16000, dtype=np.float32),
-                           autocopy=autocopy, do_translate=do_translate,
+                           autocopy=autocopy,
+                           mode="offline" if do_translate else "off",
                            prefer_english=prefer_english)
         for _ in range(20):
             app.update()
@@ -371,21 +432,50 @@ class TestSettingsPersistence:
     def test_closing_saves_as_a_backstop(self, tmp_path):
         store = Settings(tmp_path / "s.json")
         app = self._launch(store)
-        app.translate_var.set(False)
+        app.translate_mode_var.set(MODE_LABELS["off"])
         app._on_close()                        # destroys the window
-        assert store.load()["translate"] is False
+        assert store.load()["translate_mode"] == "off"
+
+    def test_the_mode_comes_back_on_the_next_launch(self, tmp_path):
+        store = Settings(tmp_path / "s.json")
+        first = self._launch(store)
+        try:
+            first.translate_mode_var.set(MODE_LABELS["online"])
+            first._on_translate_mode_changed()
+        finally:
+            first.destroy()
+        second = self._launch(store)
+        try:
+            assert second.translate_mode() == "online"
+        finally:
+            second.destroy()
+
+
+class TestTranslateModeControl:
+    def test_offers_exactly_the_three_modes(self, app):
+        assert app.translate_mode_btn.cget("values") == \
+            ["Off", "Offline", "Online"]
+
+    def test_defaults_to_offline(self, app):
+        assert app.translate_mode() == "offline"
+
+    def test_reads_back_as_a_settings_value(self, app):
+        for mode, label in MODE_LABELS.items():
+            app.translate_mode_var.set(label)
+            assert app.translate_mode() == mode
+        app.translate_mode_var.set(MODE_LABELS["offline"])
 
 
 class TestEnglishClipCheckbox:
     def test_disabled_while_translation_is_off(self, app):
-        app.translate_var.set(False)
+        app.translate_mode_var.set(MODE_LABELS["off"])
         app._sync_english_clip_state()
         assert app.english_clip_box.cget("state") == "disabled"
 
     def test_enabled_again_when_translation_comes_back(self, app):
-        app.translate_var.set(False)
+        app.translate_mode_var.set(MODE_LABELS["off"])
         app._sync_english_clip_state()
-        app.translate_var.set(True)
+        app.translate_mode_var.set(MODE_LABELS["offline"])
         app._sync_english_clip_state()
         assert app.english_clip_box.cget("state") == "normal"
 
@@ -436,6 +526,56 @@ class TestMiniMode:
         app._set_app_state("idle")
         assert app.mini.rec_btn.cget("text") == "●"
         app.toggle_mini_mode()
+
+    def test_buttons_are_words_not_glyphs(self, app):
+        """The minimise and restore symbols have no font on macOS and drew
+        as empty boxes. Button labels are plain words, except the record
+        button's state marks, which every platform renders."""
+        assert app.mini_btn.cget("text") == "Mini"
+        app.toggle_mini_mode()
+        app.update()
+        labels = [button.cget("text") for button in _buttons(app.mini)]
+        assert "Restore" in labels
+        for label in labels:
+            assert label.isascii() or label in ("●", "■", "…", "✓")
+        app.toggle_mini_mode()
+
+    def test_windows_transparency_uses_the_colour_key(self):
+        """Windows sees the pill through a colour nothing else paints."""
+        pill = MagicMock()
+        with patch("src.app.sys.platform", "win32"):
+            MiniWidget._make_window_transparent(pill)
+        pill.configure.assert_called_once_with(fg_color="#000001")
+        pill.wm_attributes.assert_called_once_with("-transparentcolor", "#000001")
+        pill.attributes.assert_not_called()
+
+    def test_macos_transparency_uses_the_real_thing(self):
+        """macOS has no colour key; a solid near-black window was what drew
+        the pill inside a rectangle. The pill must ask for per-window
+        transparency there instead."""
+        pill = MagicMock()
+        with patch("src.app.sys.platform", "darwin"):
+            MiniWidget._make_window_transparent(pill)
+        pill.attributes.assert_called_once_with("-transparent", True)
+        pill.configure.assert_called_once_with(fg_color="systemTransparent")
+        pill.wm_attributes.assert_not_called()
+
+    def test_a_platform_without_transparency_gets_a_plain_pill(self):
+        pill = MagicMock()
+        pill.wm_attributes.side_effect = tk.TclError("bad attribute")
+        with patch("src.app.sys.platform", "linux"):
+            MiniWidget._make_window_transparent(pill)
+        pill.configure.assert_called_with(fg_color=MINI_BG)
+
+
+def _buttons(widget):
+    """Every CTkButton below ``widget``, depth first."""
+    found = []
+    for child in widget.winfo_children():
+        if isinstance(child, ctk.CTkButton):
+            found.append(child)
+        found.extend(_buttons(child))
+    return found
 
 
 class TestGuards:
