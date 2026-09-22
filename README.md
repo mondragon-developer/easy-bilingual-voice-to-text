@@ -23,6 +23,7 @@ copied or pasted.
 
 - 🎙️ **Auto language detection** - speak EN or ES, no switch to flip
 - 🌐 **Both languages always shown** - spoken text in its pane, translation in the other
+- 🔌 **Translation works offline** - the translator runs on your computer too (downloaded once, about 70 MB per direction); switch to *Online* for Google's wording when you want it
 - 🗂️ **One entry per recording** - each dictation starts a new block headed by its number and time; the headers are never copied or pasted
 - ✅ **Precise** - Whisper produces punctuated, correctly spelled text
 - ⚡ **Fast** - GPU-accelerated on NVIDIA cards (17x realtime on a modern GPU); automatic CPU mode everywhere else
@@ -30,10 +31,10 @@ copied or pasted.
 - ✏️ **Editable panes** - fix anything by hand; right-click menu, Ctrl+A/C/X/V, undo
 - 📋 **Auto-copy** - dictated text lands on your clipboard, ready to paste anywhere
 - 🇬🇧 **Always copy English** - optional: dictate in Spanish, paste in English, without touching the panes
-- 💾 **Remembers your checkboxes** - the three switches stay as you left them next time you open the app
+- 💾 **Remembers your choices** - the checkboxes and the translation mode stay as you left them next time you open the app
 - 🔘 **Mini mode** - collapse to a tiny always-on-top pill at the screen edge
 - ⌨️ **Global hotkeys** (Windows) - record from inside any app
-- 🔒 **Private by design** - audio never leaves your computer. The translation pane sends each recording's transcribed **text** (never audio) to Google Translate; untick **Translate (online)** and nothing leaves your machine at all
+- 🔒 **Private by design** - audio never leaves your computer, and with the default *Offline* translation neither does your text. Only the *Online* mode sends each recording's transcribed **text** (never audio) to Google Translate
 
 ## Install - Windows
 
@@ -317,14 +318,14 @@ long for exactly the same words. See the measurements in
 | Action | How |
 |---|---|
 | Start / stop recording | **● Record** button, `Ctrl+R`, or `Ctrl+Alt+R` from **any** app (Windows) |
-| Mini mode / restore | **🗕 Mini** button or `Ctrl+Alt+M` (Windows) |
+| Mini mode / restore | **Mini** button or `Ctrl+Alt+M` (Windows) |
 | Copy a pane | **Copy** button under the pane (entry headers are left out) |
 | Save both languages to .txt | **Save transcript** or `Ctrl+S` (headers kept) |
 | Edit text | Click and type; right-click for Cut/Copy/Paste; `Ctrl+Z` undo |
 | Auto-copy after dictation | Checkbox in the bottom bar (on by default) |
 | Always paste in English | Tick **Always copy English** (off by default; needs Translate on) |
-| Keep your checkbox choices | Automatic - they are saved as you change them |
-| Translation on/off | **Translate (online)** checkbox - untick to stay 100% offline |
+| Keep your choices | Automatic - they are saved as you change them |
+| Translation mode | **Translate: Off / Offline / Online** in the bottom bar. *Offline* (default) translates on your computer; *Online* asks Google first and falls back to MyMemory, then to the offline model; *Off* translates nothing |
 
 ### Mini mode
 
@@ -358,8 +359,15 @@ The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs, `small` 
 
 - Speech recognition runs **100% locally** - your voice never leaves the machine. Models are downloaded once over HTTPS from the official
   `huggingface.co/Systran/faster-whisper-*` repositories.
-- When **Translate (online)** is ticked (default), the latest recording's **transcribed text** (never audio, never your edits) is sent to Google
-  Translate. No account, no API key. **Untick it and the app makes zero network calls.**
+- Translation has three modes, chosen in the bottom bar and remembered:
+  - **Offline** (default): the translation runs on your computer, with [OPUS-MT](https://github.com/Helsinki-NLP/Opus-MT) models through the
+    same CTranslate2 engine Whisper uses. Each direction is downloaded once (about 70 MB) from this repository's
+    [`models` release](../../releases/tag/models) and verified against a SHA-256 pinned in [`src/local_mt.py`](src/local_mt.py) before it is unpacked.
+    After that, **the app makes zero network calls.**
+  - **Online**: the latest recording's **transcribed text** (never audio, never your edits) is sent to Google Translate. No account, no API key.
+    Google rate-limits its free endpoint per public IP, so on a shared network (a school, an office) it can refuse everyone at once; the app then
+    tries MyMemory, and then the offline model. The status bar always says which one answered.
+  - **Off**: nothing is translated and nothing is sent.
 - **About the global hotkeys (Windows):** Ctrl+Alt+R / Ctrl+Alt+M are implemented with the Python [`keyboard`](https://github.com/boppreh/keyboard)
   library, which registers a system-wide keyboard hook - the standard technique every hotkey utility uses, and one some antivirus tools flag
   because keyloggers use hooks too. This app registers exactly two hotkey patterns and **never reads, stores, or transmits keystrokes** - the        entire usage is ~10 lines in [`src/app.py`](src/app.py) (`_register_global_hotkeys`),
@@ -367,12 +375,13 @@ The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs, `small` 
 - Auto-copy writes to your clipboard only when the checkbox is on.
 - **Always copy English** changes only *which* text is copied, never whether anything is sent. It uses the translation the app already made, so it adds no extra network call.
 - No telemetry, no analytics, no accounts. Transcripts are saved only when you click Save. Audio is never written to disk.
-- **The only file the app writes on its own** is a small settings file holding the three checkbox states - nothing else, and never any of your text. It is created with owner-only permissions:
+- **The only things the app writes on its own** are a small settings file holding your choices, and the offline translation models in a
+  `models` folder beside it - nothing else, and never any of your text. The settings file is created with owner-only permissions:
   - Windows: `%APPDATA%\SpeechToText\settings.json`
   - macOS: `~/Library/Application Support/SpeechToText/settings.json`
   - Linux: `~/.config/SpeechToText/settings.json`
 
-  Delete it any time; the app just goes back to its defaults.
+  Delete either any time; the app just goes back to its defaults, and downloads the models again on first use.
 - **Signed, reproducible releases:** Windows binaries are code-signed (Azure Trusted Signing, verified publisher), built by GitHub Actions from
   the exact versions in `requirements-lock.txt` - the build logs are public in the Actions tab - and published with SHA-256 checksums.
 - **Supply chain:** `requirements-lock.txt` pins exact versions *and* artifact hashes, installed with `--require-hashes`, so a hijacked re-upload    to PyPI fails the build rather than shipping inside a signed binary. Every GitHub Action is pinned to a commit SHA instead of a movable tag,       keeping a compromised action away from the signing secrets. Dependabot updates both weekly. To report a vulnerability.
@@ -387,7 +396,8 @@ The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs, `small` 
 | **macOS: nothing happens for several minutes on first launch** | On v2.1.4 and earlier, every Mac downloaded 3 GB it could not use. `git pull` to 2.1.5+, then `rm -rf ~/.cache/huggingface/hub/models--Systran--faster-whisper-large-v3` |
 | "Could not open the microphone" | Check the OS default input device and mic permissions |
 | Status says CPU but I have an NVIDIA GPU | Update NVIDIA drivers; the status bar shows the exact CUDA error |
-| Translation pane says translation failed | You're offline or Google is unreachable - the spoken pane still works |
+| Status says *translation failed - Google: rate-limited* | Google's free endpoint has cut off your network's public IP (common on school or office wifi). Switch **Translate** to *Offline*; nothing to wait for |
+| Status says *translation failed - offline: no connection* | The offline model has not been downloaded yet and there is no internet to fetch it. It is a one-time 70 MB download per direction; after that it never needs the network |
 | First start is slow | The model downloads once to `~/.cache/huggingface`; later starts are fast |
 | "Model failed to load: [WinError 3]" | You're on v2.0.0/v2.0.1 - [update to v2.0.2+](../../releases/latest), which fixed this packaging bug |
 
@@ -409,14 +419,15 @@ main.py              entry point
 src/
   recorder.py        threaded 16 kHz mic capture (sounddevice -> numpy)
   transcriber.py     faster-whisper wrapper + language auto-detection
-  translator.py      EN<->ES translation with sentence-aware chunking
+  translator.py      EN<->ES translation: the three modes and the online fallback chain
+  local_mt.py        the offline translator: model download, verification, CTranslate2
   languages.py       the pane languages and the pairing between them
   settings.py        remembers the checkboxes between launches
   transcript.py      entry numbering and the "#3 · 2:41 PM" headers
   dispatch.py        worker thread -> Tk main loop hand-off
   hotkeys.py         global hotkeys, and the no-op stand-in off Windows
   app.py             CustomTkinter two-pane UI, mini mode, recording flow
-tests/               pytest suite (159 tests across every module above)
+tests/               pytest suite (235 tests across every module above)
 scripts/
   build_release.ps1  Windows: PyInstaller -> the two release zips
   build_macos.sh     macOS: PyInstaller -> .app -> .dmg (unsigned)

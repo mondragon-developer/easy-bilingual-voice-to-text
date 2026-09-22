@@ -65,8 +65,9 @@ This has three practical consequences:
 
 1. **Privacy.** Your voice cannot be leaked, subpoenaed, or used for training,
    because it never goes anywhere.
-2. **It works offline.** On a plane with no wifi, dictation still works. Only
-   the translation needs internet - and you can switch that off.
+2. **It works offline.** On a plane with no wifi, dictation still works, and
+   so does the translation: since version 2.2 the translator runs on your
+   computer too. Only the optional *Online* mode uses the internet.
 3. **There is a one-time download.** The app needs the "listening brain" on
    your machine, and that file is large. The first launch downloads it once
    (about 460 MB, roughly a long film). After that, it starts in seconds.
@@ -116,9 +117,11 @@ recording even when the app is not the window you are looking at. On Mac this
 is not available, because macOS requires administrator powers for it, which the
 app deliberately does not ask for.
 
-**A genuine off switch for the internet.** One checkbox, *Translate (online)*.
-Untick it and the app makes **zero** network connections. Nothing at all leaves
-your computer.
+**A genuine off switch for the internet.** The translator has three settings:
+*Off*, *Offline* and *Online*. In *Offline*, the default, the app makes
+**zero** network connections once its models are downloaded. Nothing at all
+leaves your computer. *Online* asks Google instead, for its slightly more
+natural wording, and says so in the status bar every time.
 
 ---
 
@@ -142,11 +145,13 @@ flowchart TD
     Listen --> Show[Your words appear in the panel<br/>for the language you spoke]
     Show --> Clip[Your words are copied<br/>to the clipboard automatically]
 
-    Clip --> Online{Is Translate<br/>switched on?}
-    Online -->|Yes| Send[The text is translated<br/>and appears in the other panel]
-    Online -->|No| Private[Nothing leaves your computer]
+    Clip --> Online{Which Translate<br/>setting?}
+    Online -->|Offline| Local[Translated on your computer<br/>and shown in the other panel]
+    Online -->|Online| Send[The text goes to Google<br/>and the translation comes back]
+    Online -->|Off| Private[Nothing is translated]
+    Local --> Again{What next?}
 
-    Send --> Again{What next?}
+    Send --> Again
     Private --> Again
     Again -->|Say something else| Press
     Again -->|Fix a word| Edit[You edit either panel by hand]
@@ -191,12 +196,15 @@ sequenceDiagram
 
     App-->>You: Your words appear immediately<br/>and go onto your clipboard
 
-    alt Translate is switched ON
+    alt Translate is set to Offline (the default)
+        Note over App: A second, smaller brain translates<br/>the text. Also on YOUR machine.
+        App-->>You: Translation appears in the other panel
+    else Translate is set to Online
         App->>Web: The TEXT only. Never the sound.
         Web-->>App: The translation
         App-->>You: Translation appears in the other panel
-    else Translate is switched OFF
-        Note over App,Web: No connection is made at all.<br/>Nothing leaves your computer.
+    else Translate is Off
+        Note over App,Web: No connection is made at all.<br/>Nothing is translated.
     end
 ```
 
@@ -206,8 +214,10 @@ which is also on your computer. It stops there. It is never written to a file
 and never uploaded.
 
 The **only** thing that can ever leave your machine is the *finished text*, sent
-to Google Translate, and only if you have left that checkbox ticked. If you are
-dictating something sensitive, untick it and the app is completely sealed.
+to Google Translate, and only if you have chosen the *Online* setting. In the
+default *Offline* setting the app is completely sealed: the translation is made
+by a second, smaller brain that is downloaded once and then lives on your
+computer like the first.
 
 ---
 
@@ -233,7 +243,7 @@ flowchart TB
     subgraph Work["The three parts that do real work"]
         Rec["Recorder<br/>captures sound from your microphone"]
         Brain["Listening brain<br/>turns the sound into written words"]
-        Trans["Translator<br/>the ONLY part that uses the internet"]
+        Trans["Translator<br/>on your computer, or Google if you ask"]
     end
 
     subgraph Tools["Small helpers behind the scenes"]
@@ -414,10 +424,15 @@ constraints:
 recognises about 99 languages, but the app has two panels, and two panels
 cannot show three languages. Adding a third is a redesign, not a setting.
 
-**Translation needs the internet, and it goes to Google.** The recognition is
-private; the translation is not. That is why it is a visible checkbox rather
-than something buried in settings. If it matters, switch it off - the dictation
-still works perfectly.
+**The offline translation is good, not perfect.** The on-computer translator
+is a much smaller brain than Google's, and it shows on idioms and unusual
+phrasing. That is why the *Online* setting exists. It sends the text to Google,
+which is the one thing in this app that is not private, so it is a visible
+choice in the window rather than something buried in settings. And Google's
+free service refuses networks that send it too much - a school or an office
+where everyone shares one connection can be cut off for hours. When that
+happens the app falls back to another free service, and then to its own
+offline translator, and the status bar tells you which one answered.
 
 **Recordings stop at 30 minutes.** Sound held in memory costs about 3.8 MB a
 minute, so a microphone left running by accident could eventually exhaust your
@@ -467,7 +482,7 @@ Speech to Text is a desktop dictation tool for people who work in English and
 Spanish. You press record, speak in either language, and press stop; a second
 later your punctuated words appear in the correct panel, the translation
 appears in the other, and the text is already on your clipboard. The
-understanding of your speech happens entirely on your own computer, so your
-voice is never uploaded and never saved - the only thing that can ever leave
-your machine is the finished text going to a translation service, and a single
-checkbox turns even that off.
+understanding of your speech happens entirely on your own computer, and so
+does the translation, so your voice is never uploaded and never saved. The only
+thing that can ever leave your machine is the finished text going to Google,
+and only if you choose the *Online* setting yourself.

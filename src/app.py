@@ -44,7 +44,7 @@ from .recorder import MAX_RECORDING_SECONDS, SAMPLE_RATE, AudioRecorder
 from .settings import Settings
 from .transcriber import Transcriber
 from .transcript import TranscriptLog
-from .translator import translate
+from .translator import MODES, TranslationError, translate
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
@@ -61,6 +61,8 @@ UI_FONT = ("Segoe UI", 13)
 STAMP_FONT = ("Segoe UI", 11, "bold")
 STAMP_COLOR = "#6b7280"
 STAMP_TAG = "stamp"          # marks entry headers, which no copy path emits
+#: Translation modes as the segmented button shows them, in MODES order.
+MODE_LABELS = {"off": "Off", "offline": "Offline", "online": "Online"}
 
 
 def _asset_path(name: str) -> str:
@@ -103,7 +105,8 @@ class SpeechToTextApp(ctk.CTk):
         Args:
             recorder: Object with the ``AudioRecorder`` interface.
             transcriber: Object with the ``Transcriber`` interface.
-            translator: Callable ``(text, target) -> str``.
+            translator: Callable ``(text, source, target, mode, progress)
+                -> Translation``; see ``translator.translate``.
             hotkeys: Object with the ``hotkeys`` manager interface.
             settings: Object with the ``Settings`` interface, for remembering
                 the checkboxes between launches.
@@ -129,7 +132,8 @@ class SpeechToTextApp(ctk.CTk):
         self.settings = settings if settings is not None else Settings()
         saved = self.settings.load()
         self.autocopy_var = tk.BooleanVar(value=saved["autocopy"])
-        self.translate_var = tk.BooleanVar(value=saved["translate"])
+        self.translate_mode_var = tk.StringVar(
+            value=MODE_LABELS[saved["translate_mode"]])
         # Off by default: this changes what lands on the clipboard, so it is
         # opt-in rather than a surprise for anyone upgrading.
         self.english_clip_var = tk.BooleanVar(
@@ -201,7 +205,9 @@ class SpeechToTextApp(ctk.CTk):
         self.level_meter.set(0)
         self.level_meter.grid(row=0, column=3, sticky="e")
 
-        self.mini_btn = ctk.CTkButton(top, text="🗕 Mini", width=70, height=32,
+        # Plain text: the minimise glyph this used to carry has no font on
+        # macOS and drew as an empty box next to the word.
+        self.mini_btn = ctk.CTkButton(top, text="Mini", width=70, height=32,
                                       font=UI_FONT, fg_color="#374151",
                                       hover_color="#4b5563",
                                       command=self.toggle_mini_mode)
@@ -253,30 +259,34 @@ class SpeechToTextApp(ctk.CTk):
                         checkbox_height=20, command=self._save_settings
                         ).grid(row=0, column=1, sticky="w", padx=16)
 
-        # Translation is the app's only network call - make it a real choice.
-        ctk.CTkCheckBox(bottom, text="Translate (online)", font=UI_FONT,
-                        variable=self.translate_var, checkbox_width=20,
-                        checkbox_height=20,
-                        command=self._on_translate_toggled
-                        ).grid(row=0, column=2, sticky="w")
+        # Translation is the app's only network use, and Online is the only
+        # mode that sends text anywhere - so it is a visible three-way
+        # choice, not a checkbox with the network hidden inside it.
+        ctk.CTkLabel(bottom, text="Translate:", font=UI_FONT
+                     ).grid(row=0, column=2, sticky="w")
+        self.translate_mode_btn = ctk.CTkSegmentedButton(
+            bottom, values=[MODE_LABELS[m] for m in MODES],
+            variable=self.translate_mode_var, font=UI_FONT, height=28,
+            command=self._on_translate_mode_changed)
+        self.translate_mode_btn.grid(row=0, column=3, sticky="w", padx=(8, 0))
 
-        # Only meaningful while Translate is on: with translation off there is
-        # no English version to copy, so the box greys out rather than
+        # Only meaningful while translation is on: with it off there is no
+        # English version to copy, so the box greys out rather than
         # promising something the app cannot deliver.
         self.english_clip_box = ctk.CTkCheckBox(
             bottom, text="Always copy English", font=UI_FONT,
             variable=self.english_clip_var, checkbox_width=20,
             checkbox_height=20, command=self._save_settings)
-        self.english_clip_box.grid(row=0, column=3, sticky="w", padx=16)
+        self.english_clip_box.grid(row=0, column=4, sticky="w", padx=16)
         self._sync_english_clip_state()
 
-        bottom.grid_columnconfigure(4, weight=1)
+        bottom.grid_columnconfigure(5, weight=1)
         # Its own row: hotkey hint + model + device runs long, and a Tk label
         # does not clip to its cell - sharing row 0 let it draw over the
         # Translate checkbox once the text outgrew the window width.
         self.device_lbl = ctk.CTkLabel(bottom, text="", font=("Segoe UI", 12),
                                        text_color="#9ca3af", anchor="e")
-        self.device_lbl.grid(row=1, column=0, columnspan=5, sticky="e",
+        self.device_lbl.grid(row=1, column=0, columnspan=6, sticky="e",
                              pady=(6, 0))
 
     def _attach_editing_helpers(self, box):
@@ -362,12 +372,18 @@ class SpeechToTextApp(ctk.CTk):
         """
         self.settings.save({
             "autocopy": self.autocopy_var.get(),
-            "translate": self.translate_var.get(),
+            "translate_mode": self.translate_mode(),
             "always_copy_english": self.english_clip_var.get(),
         })
 
-    def _on_translate_toggled(self):
-        """Translation was switched on or off: restyle, then remember."""
+    def translate_mode(self) -> str:
+        """The selected translation mode as a settings value, e.g. ``"offline"``."""
+        label = self.translate_mode_var.get()
+        return next(mode for mode, shown in MODE_LABELS.items()
+                    if shown == label)
+
+    def _on_translate_mode_changed(self, _label=None):
+        """The translation mode was switched: restyle, then remember."""
         self._sync_english_clip_state()
         self._save_settings()
 
@@ -379,7 +395,7 @@ class SpeechToTextApp(ctk.CTk):
         leaving a tick box that silently does nothing.
         """
         self.english_clip_box.configure(
-            state="normal" if self.translate_var.get() else "disabled")
+            state="normal" if self.translate_mode() != "off" else "disabled")
 
     def _copy_to_clipboard(self, text):
         """Replace the clipboard contents.
@@ -496,7 +512,7 @@ class SpeechToTextApp(ctk.CTk):
             self._set_status("Transcribing…")
             threading.Thread(target=self._process_audio,
                              args=(audio, self.autocopy_var.get(),
-                                   self.translate_var.get(),
+                                   self.translate_mode(),
                                    self.english_clip_var.get()),
                              daemon=True).start()
 
@@ -526,7 +542,7 @@ class SpeechToTextApp(ctk.CTk):
 
     # ------------------------------------------------- transcribe/translate
 
-    def _process_audio(self, audio, autocopy, do_translate=True,
+    def _process_audio(self, audio, autocopy, mode="offline",
                        prefer_english=False):
         """Worker thread: audio -> text -> (optionally) translation.
 
@@ -535,12 +551,12 @@ class SpeechToTextApp(ctk.CTk):
         Args:
             audio (numpy.ndarray): 1-D float32 samples from the recorder.
             autocopy (bool): Whether to copy anything to the clipboard at all.
-            do_translate (bool): Whether to call the online translator. When
-                False, nothing ever leaves the machine.
+            mode (str): Translation mode, one of ``MODES``. ``"off"`` means
+                nothing is translated and nothing leaves the machine.
             prefer_english (bool): Put the English version on the clipboard
-                whichever language was spoken. Only reachable with
-                ``do_translate``; ignored when English was already spoken,
-                since the spoken text *is* the English. When it applies, the
+                whichever language was spoken. Only reachable with a
+                translation; ignored when English was already spoken, since
+                the spoken text *is* the English. When it applies, the
                 clipboard is written after the translation arrives rather than
                 as soon as the words appear, and falls back to the spoken text
                 if the translation fails.
@@ -566,6 +582,7 @@ class SpeechToTextApp(ctk.CTk):
         # language is not already English and a translation is actually
         # coming. In that one case the clipboard has to wait for the
         # translation, so the copy moves out of _show_result to below.
+        do_translate = mode != "off"
         wants_english = autocopy and prefer_english and do_translate
         defer_copy = wants_english and lang != DEFAULT_LANG
         copied = " · copied to clipboard" if autocopy and not defer_copy else ""
@@ -580,22 +597,46 @@ class SpeechToTextApp(ctk.CTk):
         self._ui(self._set_status,
                  f"Transcribed {speed} - translating to {LANG_NAMES[other]}…")
         try:
-            translated = self.translate(text, target=other)
-        except Exception:
+            result = self.translate(text, source=lang, target=other, mode=mode,
+                                    progress=self._download_progress(lang, other))
+        except Exception as exc:  # noqa: BLE001 - the reason goes on screen
             # Fall back to the spoken text: a failed translation must not
             # leave the clipboard holding whatever was there before.
             if defer_copy:
                 self._ui(self._copy_to_clipboard, text)
+            reason = (str(exc) if isinstance(exc, TranslationError)
+                      else f"{type(exc).__name__}: {exc}")
             self._ui(self._finish,
-                     f"Transcribed, but translation failed - are you online? "
+                     f"Transcribed, but translation failed - {reason}. "
                      f"({LANG_NAMES[other]} pane not updated.)"
                      f"{' · spoken text copied instead' if defer_copy else copied}")
             return
-        self._ui(self._append_to_pane, other, translated)
+        self._ui(self._append_to_pane, other, result.text)
         if defer_copy:
-            self._ui(self._copy_to_clipboard, translated)
+            self._ui(self._copy_to_clipboard, result.text)
             copied = " · English copied to clipboard"
-        self._ui(self._finish, f"Done - transcribed {speed}{copied}.")
+        self._ui(self._finish,
+                 f"Done - transcribed {speed} · translated {result.engine}"
+                 f"{copied}.")
+
+    def _download_progress(self, source, target):
+        """A progress callback for the one-time offline model download.
+
+        Only whole-percent changes reach the status bar: the download reports
+        every 64 KB, and posting each one would flood the main loop.
+        """
+        shown = {"pct": -1}
+
+        def report(done, total):
+            pct = int(done * 100 / total) if total else 0
+            if pct == shown["pct"]:
+                return
+            shown["pct"] = pct
+            size = f"{total // 1_000_000} MB" if total else "one time"
+            self._ui(self._set_status,
+                     f"Downloading the offline translator ({source} to "
+                     f"{target}, {size}, once)… {pct}%")
+        return report
 
     def _show_result(self, text, lang, prob, autocopy=False):
         """Show a finished transcription: badge, pane titles, spoken text.
@@ -828,13 +869,7 @@ class MiniWidget(ctk.CTkToplevel):
         super().__init__(master)
         self.overrideredirect(True)          # no title bar
         self.attributes("-topmost", True)
-        # Rounded corners: fill the window with a color Windows renders as
-        # transparent so only the rounded frame is visible.
-        self.configure(fg_color="#000001")
-        try:
-            self.wm_attributes("-transparentcolor", "#000001")
-        except tk.TclError:
-            pass
+        self._make_window_transparent()
 
         body = ctk.CTkFrame(self, corner_radius=24, fg_color=MINI_BG,
                             border_width=1, border_color="#374151")
@@ -851,8 +886,10 @@ class MiniWidget(ctk.CTkToplevel):
         self.meter.set(0)
         self.meter.grid(row=0, column=1, padx=2)
 
-        ctk.CTkButton(body, text="⛶", width=32, height=32,
-                      font=("Segoe UI", 14), fg_color="transparent",
+        # A word rather than a glyph: the restore symbol this used to show
+        # has no font on macOS and drew as an empty box.
+        ctk.CTkButton(body, text="Restore", width=64, height=32,
+                      font=UI_FONT, fg_color="transparent",
                       hover_color="#374151", command=on_restore
                       ).grid(row=0, column=2, padx=(6, 9))
 
@@ -871,6 +908,33 @@ class MiniWidget(ctk.CTkToplevel):
         menu.add_separator()
         menu.add_command(label="Exit app", command=on_exit)
         body.bind("<Button-3>", lambda e: menu.tk_popup(e.x_root, e.y_root))
+
+    def _make_window_transparent(self):
+        """Hide the window's own rectangle so only the rounded pill shows.
+
+        Each platform does this differently, and getting it wrong is what
+        drew the pill as an oval sitting inside a dark rectangle:
+
+        - Windows has no real window transparency, but will treat one chosen
+          colour as see-through. Fill the window with a colour nothing else
+          uses and declare it transparent.
+        - macOS Tk has genuine transparency, switched on per window, and the
+          colour name ``systemTransparent`` for anything that should not be
+          painted. The Windows trick is not an option there: the attribute
+          does not exist, and the fallback was a solid near-black window.
+
+        Anything else, and any failure, leaves the pill on a plain
+        rectangle, which is ugly but works.
+        """
+        try:
+            if sys.platform == "darwin":
+                self.attributes("-transparent", True)
+                self.configure(fg_color="systemTransparent")
+            else:
+                self.configure(fg_color="#000001")
+                self.wm_attributes("-transparentcolor", "#000001")
+        except tk.TclError:
+            self.configure(fg_color=MINI_BG)
 
     def _drag_start(self, event):
         """Remember the grab offset when a drag begins."""
