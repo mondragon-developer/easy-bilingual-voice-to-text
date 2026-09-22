@@ -5,8 +5,12 @@ desktop session - they run on a normal Windows/macOS/Linux machine but
 would need a virtual display (e.g. Xvfb) on a headless CI runner.
 """
 
+import json
 import re
+import subprocess
+import sys
 import tkinter as tk
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import customtkinter as ctk
@@ -360,95 +364,106 @@ class TestAlwaysCopyEnglish:
 
 
 class TestSettingsPersistence:
-    """The checkboxes must survive a restart.
+    """The choices must survive a restart.
 
-    These build their own windows rather than using the shared one, because
-    the point is what a *second* launch reads back.
+    A second ``SpeechToTextApp`` in this process is a second Tk interpreter,
+    and on Windows the second one created after another was destroyed fails
+    intermittently with "Can't find a usable init.tcl". So the tests that
+    only need *a* window drive the shared one with a scratch settings file,
+    and the two whose point is a fresh launch run that launch in a child
+    process, where Tk starts clean every time.
     """
 
-    def _launch(self, settings):
-        fake = MagicMock()
-        fake.load.return_value = "CPU (test)"
-        fake.gpu_error = None
-        fake.model_name = "small"
-        application = SpeechToTextApp(transcriber=fake,
-                                      hotkeys=NullHotkeyManager(),
-                                      settings=settings)
-        for _ in range(50):
-            application.update()
-            if application.model_ready:
-                break
-        return application
-
-    def test_a_toggle_is_written_immediately(self, tmp_path):
-        """Saved on change, not only at exit, so a force quit loses nothing."""
-        store = Settings(tmp_path / "s.json")
-        app = self._launch(store)
+    @pytest.fixture
+    def store(self, app, tmp_path):
+        """The shared window, writing to a fresh file for this test only."""
+        original = app.settings
+        app.settings = Settings(tmp_path / "s.json")
         try:
-            app.english_clip_var.set(True)
-            app._save_settings()
-            assert store.load()["always_copy_english"] is True
+            yield app.settings
         finally:
-            app.destroy()
+            app.settings = original
+            app.autocopy_var.set(True)
+            app.english_clip_var.set(False)
+            app.translate_mode_var.set(MODE_LABELS["offline"])
+            app._sync_english_clip_state()
+
+    def test_a_toggle_is_written_immediately(self, app, store):
+        """Saved on change, not only at exit, so a force quit loses nothing."""
+        app.english_clip_var.set(True)
+        app._save_settings()
+        assert store.load()["always_copy_english"] is True
+
+    def test_the_mode_is_written_when_switched(self, app, store):
+        app.translate_mode_var.set(MODE_LABELS["online"])
+        app._on_translate_mode_changed()
+        assert store.load()["translate_mode"] == "online"
+
+    def test_unwritable_settings_do_not_break_anything(self, app, store):
+        """A read-only home must not stop the app working."""
+        with patch.object(store, "save", return_value=False):
+            app._save_settings()          # must not raise
+            app.english_clip_var.set(True)
+        assert app.english_clip_var.get() is True
 
     def test_choices_come_back_on_the_next_launch(self, tmp_path):
         store = Settings(tmp_path / "s.json")
-        first = self._launch(store)
-        try:
-            first.autocopy_var.set(False)
-            first.english_clip_var.set(True)
-            first._save_settings()
-        finally:
-            first.destroy()
+        store.save({"autocopy": False, "translate_mode": "online",
+                    "always_copy_english": True})
+        seen = _launch_in_child(store.path)
+        assert seen == {"autocopy": False, "english": True, "mode": "online"}
 
-        second = self._launch(store)
-        try:
-            assert second.autocopy_var.get() is False
-            assert second.english_clip_var.get() is True
-        finally:
-            second.destroy()
-
-    def test_a_corrupt_file_still_lets_the_app_start(self, tmp_path):
+    def test_closing_saves_and_a_corrupt_file_still_starts(self, tmp_path):
+        """One launch for two facts: a corrupt file on disk is not fatal on
+        the way in, and the close handler is a backstop save on the way out."""
         path = tmp_path / "s.json"
         path.write_text("{{{ not json", encoding="utf-8")
-        app = self._launch(Settings(path))
-        try:
-            assert app.autocopy_var.get() is True   # the default
-        finally:
-            app.destroy()
+        seen = _launch_in_child(path, close_with_mode="off")
+        assert seen["autocopy"] is True            # the default
+        assert Settings(path).load()["translate_mode"] == "off"
 
-    def test_unwritable_settings_do_not_break_anything(self, tmp_path):
-        """A read-only home must not stop the app working."""
-        store = Settings(tmp_path / "s.json")
-        app = self._launch(store)
-        try:
-            with patch.object(store, "save", return_value=False):
-                app._save_settings()          # must not raise
-                app.english_clip_var.set(True)
-            assert app.english_clip_var.get() is True
-        finally:
-            app.destroy()
 
-    def test_closing_saves_as_a_backstop(self, tmp_path):
-        store = Settings(tmp_path / "s.json")
-        app = self._launch(store)
-        app.translate_mode_var.set(MODE_LABELS["off"])
-        app._on_close()                        # destroys the window
-        assert store.load()["translate_mode"] == "off"
+_CHILD_LAUNCH = """
+import json, sys
+from unittest.mock import MagicMock
+from src.app import MODE_LABELS, SpeechToTextApp
+from src.hotkeys import NullHotkeyManager
+from src.settings import Settings
+fake = MagicMock()
+fake.load.return_value = "CPU (test)"
+fake.gpu_error = None
+fake.model_name = "small"
+app = SpeechToTextApp(transcriber=fake, hotkeys=NullHotkeyManager(),
+                      settings=Settings(sys.argv[1]))
+for _ in range(50):
+    app.update()
+    if app.model_ready:
+        break
+print(json.dumps({"autocopy": app.autocopy_var.get(),
+                  "english": app.english_clip_var.get(),
+                  "mode": app.translate_mode()}))
+if len(sys.argv) > 2:
+    app.translate_mode_var.set(MODE_LABELS[sys.argv[2]])
+    app._on_close()
+else:
+    app.destroy()
+"""
 
-    def test_the_mode_comes_back_on_the_next_launch(self, tmp_path):
-        store = Settings(tmp_path / "s.json")
-        first = self._launch(store)
-        try:
-            first.translate_mode_var.set(MODE_LABELS["online"])
-            first._on_translate_mode_changed()
-        finally:
-            first.destroy()
-        second = self._launch(store)
-        try:
-            assert second.translate_mode() == "online"
-        finally:
-            second.destroy()
+
+def _launch_in_child(settings_path, close_with_mode=None):
+    """Start the app in a fresh interpreter and report what it read back.
+
+    Returns the dict the child prints: the three choices as the new window
+    saw them. With ``close_with_mode`` the child sets that mode and exits
+    through the close handler instead of plain ``destroy``.
+    """
+    args = [sys.executable, "-c", _CHILD_LAUNCH, str(settings_path)]
+    if close_with_mode:
+        args.append(close_with_mode)
+    done = subprocess.run(args, capture_output=True, text=True, timeout=120,
+                          cwd=str(Path(__file__).resolve().parent.parent))
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout.strip().splitlines()[-1])
 
 
 class TestTranslateModeControl:

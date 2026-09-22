@@ -120,11 +120,13 @@ class TestNvidiaDllDirs:
 class _FakeModel:
     """Stand-in for WhisperModel: records how it was built, fails on demand."""
 
-    def __init__(self, name, device, compute_type, fail_on_transcribe=None):
+    def __init__(self, name, device, compute_type, fail_on_transcribe=None,
+                 local_files_only=False):
         self.name = name
         self.device = device
         self.compute_type = compute_type
         self.fail_on_transcribe = fail_on_transcribe
+        self.local_files_only = local_files_only
 
     def transcribe(self, audio, **kwargs):
         if self.fail_on_transcribe:
@@ -133,14 +135,23 @@ class _FakeModel:
 
 
 def _fake_faster_whisper(cuda_failure=None, cpu_failure=None,
-                         cuda_construct_failure=None):
-    """Build a faster_whisper module whose CUDA model breaks as instructed."""
-    def whisper_model(name, device, compute_type):
+                         cuda_construct_failure=None, cached=True):
+    """Build a faster_whisper module whose CUDA model breaks as instructed.
+
+    ``cached=False`` behaves like an empty Hugging Face cache: the offline
+    construction raises the hub's cache-miss error and only a networked
+    construction succeeds.
+    """
+    def whisper_model(name, device, compute_type, local_files_only=False):
+        if local_files_only and not cached:
+            raise FileNotFoundError(f"{name} is not in the local cache")
         if device == "cuda":
             if cuda_construct_failure:
                 raise RuntimeError(cuda_construct_failure)
-            return _FakeModel(name, device, compute_type, cuda_failure)
-        return _FakeModel(name, device, compute_type, cpu_failure)
+            return _FakeModel(name, device, compute_type, cuda_failure,
+                              local_files_only)
+        return _FakeModel(name, device, compute_type, cpu_failure,
+                          local_files_only)
 
     module = types.ModuleType("faster_whisper")
     module.WhisperModel = whisper_model
@@ -189,6 +200,33 @@ class TestLoadFallback:
                                platform="darwin")
         assert label == "CPU (int8)"
         assert tr.gpu_error is None
+
+    def test_a_cached_model_never_touches_the_network(self):
+        """The privacy notes say a launch with cached models makes no
+        network call; the hub revision check faster-whisper does by default
+        was one."""
+        tr, _ = self._load(_fake_faster_whisper())
+        assert tr.model.local_files_only is True
+
+    def test_an_empty_cache_falls_back_to_a_download(self):
+        tr, label = self._load(_fake_faster_whisper(cached=False))
+        assert label == "GPU (CUDA, float16)"
+        assert tr.model.local_files_only is False
+
+    def test_a_cached_gpu_failure_still_lands_on_cpu(self):
+        """A CUDA error is not a cache miss: no retry online, straight to
+        the CPU fallback."""
+        calls = []
+        module = _fake_faster_whisper(cuda_failure=self.CUBLAS)
+        original = module.WhisperModel
+
+        def counting(name, device, compute_type, local_files_only=False):
+            calls.append((device, local_files_only))
+            return original(name, device, compute_type, local_files_only)
+        module.WhisperModel = counting
+        tr, label = self._load(module)
+        assert label == "CPU (int8)"
+        assert calls == [("cuda", True), ("cpu", True)]
 
     def test_cpu_failure_still_raises(self):
         # There is nothing left to fall back to; the UI shows this one.

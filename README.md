@@ -4,7 +4,8 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 
 Dictate in **English or Spanish** - the app auto-detects the language, transcribes it with OpenAI's Whisper model (running **locally on your
-machine**), and shows the text in **both languages** side by side. Both panes are fully editable with native copy/cut/paste.
+machine**), translates it (also locally), and shows the text in **both languages** side by side. Both panes are fully editable with native
+copy/cut/paste. Free, open source, no account, and your voice never leaves your computer.
 
 ![The app after two dictations, one spoken in English and one in Spanish](assets/screenshot-main.png)
 
@@ -31,10 +32,51 @@ copied or pasted.
 - ✏️ **Editable panes** - fix anything by hand; right-click menu, Ctrl+A/C/X/V, undo
 - 📋 **Auto-copy** - dictated text lands on your clipboard, ready to paste anywhere
 - 🇬🇧 **Always copy English** - optional: dictate in Spanish, paste in English, without touching the panes
-- 💾 **Remembers your choices** - the checkboxes and the translation mode stay as you left them next time you open the app
+- 💾 **Remembers your choices** - the two checkboxes and the translation mode stay as you left them next time you open the app
 - 🔘 **Mini mode** - collapse to a tiny always-on-top pill at the screen edge
 - ⌨️ **Global hotkeys** (Windows) - record from inside any app
 - 🔒 **Private by design** - audio never leaves your computer, and with the default *Offline* translation neither does your text. Only the *Online* mode sends each recording's transcribed **text** (never audio) to Google Translate
+
+## Why this and not another dictation app
+
+Most dictation tools do one language at a time, and most of them do it on
+someone else's server. This one was built for people who live in two
+languages - a teacher writing to parents, a nurse taking notes, anyone whose
+day switches between English and Spanish - and who would rather their words
+stayed on their own machine.
+
+| | Speech to Text | Built-in dictation (Windows Voice Typing, macOS Dictation) | Cloud transcription (Google Docs voice typing, Otter, Word) | Whisper desktop apps (MacWhisper, SuperWhisper and similar) |
+|---|---|---|---|---|
+| Where your voice is processed | **Your computer** | Usually the vendor's servers | Their servers | Your computer |
+| Switch EN/ES mid-session | **Automatic, per recording** | Change the input language first | Change the document language first | Usually a per-session setting |
+| Translation into the other language | **Built in, offline, both directions** | No | No (separate service) | Usually to English only, or via an API you configure |
+| Both languages side by side, one transcript each | **Yes** | No | No | No |
+| Speech model | Whisper `large-v3` on a GPU, `small` on CPU | Vendor model | Vendor model | Whisper, model choice varies |
+| Price | **Free, MIT** | Included with the OS | Subscription for the good tiers | Free tier, paid for the full app |
+| Verifiable build | **Public CI logs, hash-pinned dependencies, signed Windows exe** | Closed | Closed | Mostly closed |
+| Works with no internet at all | **Yes** (after the one-time model download) | Some, with limited vocabulary | No | Yes |
+
+The columns for other products describe how those categories generally work, not any one version of any one product; check the current
+product pages before choosing.
+
+### What is under the hood
+
+- **[faster-whisper](https://github.com/SYSTRAN/faster-whisper) running OpenAI's Whisper `large-v3`.** The full-size model, not a trimmed
+  one: it is what gives correct accents, inverted question marks, and punctuation without you saying "comma". On an NVIDIA card it runs in
+  float16 at roughly 17x realtime; without one it drops to the `small` model in int8 and stays usable on a laptop.
+- **[CTranslate2](https://github.com/OpenNMT/CTranslate2) for both the recognition and the translation.** One inference engine, two model
+  types. The translation models are [OPUS-MT](https://github.com/Helsinki-NLP/Opus-MT) (Helsinki-NLP), converted to int8 so each direction
+  is a 68 MB download instead of a 300 MB PyTorch checkpoint, and they run in well under a second per sentence on a CPU.
+- **Language detection per recording**, from Whisper itself, so a Spanish sentence after an English one lands in the right pane with no
+  switch to flip.
+- **A translation chain with an honest status bar.** Offline is the default. Online asks Google, and when Google rate-limits your network
+  (it does this to whole schools and offices at once) the app moves to MyMemory, then to the offline model, and tells you which one
+  answered rather than guessing that you are offline.
+- **A supply chain you can audit.** Release builds install from a lockfile that pins versions *and* artifact hashes, every GitHub Action is
+  pinned to a commit, the Windows binary is signed through Azure Trusted Signing, and the translation models are verified against a SHA-256
+  in the source before they are unpacked. The build logs are public.
+- **Small, readable Python.** Ten modules, each with one job, and a test suite that covers every one of them that can be tested without a
+  live keyboard hook - including the UI, the settings file surviving corruption, and the model installer refusing a tampered download.
 
 ## Install - Windows
 
@@ -329,16 +371,18 @@ long for exactly the same words. See the measurements in
 
 ### Mini mode
 
-Press **🗕 Mini** and the window collapses to a small always-on-top pill:
-record button, level meter, and a restore button. It stays above every other
-window and you can **drag it anywhere on screen**, so you can dictate straight
-into whatever you are writing without giving up the space a full window takes.
+Press **Mini** and the window collapses to a small always-on-top pill:
+record button, level meter, and a **Restore** button. It stays above every
+other window and you can **drag it anywhere on screen**, so you can dictate
+straight into whatever you are writing without giving up the space a full
+window takes.
 
 ![The mini pill floating over the desktop](assets/screenshot-mini.png)
 
-Right-click the pill for *Restore window* or *Exit app*. On macOS it sits on a
-dark rectangle, as above; the rounded, fully transparent version is Windows
-only for now.
+Right-click the pill for *Restore window* or *Exit app*. The pill is rounded
+and see-through around the edges on Windows. On macOS it asks the system for
+its own window transparency, which has not yet been checked on real Apple
+hardware; if your corners still show, please open an issue.
 
 **Dictate-anywhere workflow (Windows):** minimize to the pill → `Ctrl+Alt+R` → speak → `Ctrl+Alt+R` → wait for the green ✓ → `Ctrl+V` in
 whatever app you're writing in.
@@ -353,12 +397,14 @@ words. **Save transcript** is the exception - the `.txt` file keeps the headers,
 ## Choosing a model
 
 The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs, `small` (fast) on CPU. Override with the `STT_MODEL` environment variable:
-`tiny`, `base`, `small`, `medium`, `large-v3`, `distil-large-v3`.
+`tiny`, `base`, `small`, `medium`, `large-v2`, `large-v3`, `large-v3-turbo`, or `tiny.en` / `base.en` / `small.en` / `medium.en` for
+English only. Anything else is ignored and the default is used. The `distil-*` models are deliberately not accepted: they are English-only
+without saying so, and would turn Spanish into English-shaped nonsense.
 
 ## Privacy & security
 
 - Speech recognition runs **100% locally** - your voice never leaves the machine. Models are downloaded once over HTTPS from the official
-  `huggingface.co/Systran/faster-whisper-*` repositories.
+  `huggingface.co/Systran/faster-whisper-*` repositories, and a launch with the model already cached does not contact the hub at all.
 - Translation has three modes, chosen in the bottom bar and remembered:
   - **Offline** (default): the translation runs on your computer, with [OPUS-MT](https://github.com/Helsinki-NLP/Opus-MT) models through the
     same CTranslate2 engine Whisper uses. Each direction is downloaded once (about 70 MB) from this repository's
@@ -366,7 +412,8 @@ The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs, `small` 
     After that, **the app makes zero network calls.**
   - **Online**: the latest recording's **transcribed text** (never audio, never your edits) is sent to Google Translate. No account, no API key.
     Google rate-limits its free endpoint per public IP, so on a shared network (a school, an office) it can refuse everyone at once; the app then
-    tries MyMemory, and then the offline model. The status bar always says which one answered.
+    tries MyMemory, and then the offline model - which means the first such fallback can trigger the offline model's one-time download. The
+    status bar always says which one answered.
   - **Off**: nothing is translated and nothing is sent.
 - **About the global hotkeys (Windows):** Ctrl+Alt+R / Ctrl+Alt+M are implemented with the Python [`keyboard`](https://github.com/boppreh/keyboard)
   library, which registers a system-wide keyboard hook - the standard technique every hotkey utility uses, and one some antivirus tools flag
@@ -405,13 +452,16 @@ The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs, `small` 
 
 - **Integrity:** compare your zip's SHA-256 against `checksums.txt` attached to the release - `Get-FileHash SpeechToText-Windows-*.zip` in     PowerShell.
 - **Authenticity:** right-click `SpeechToText.exe` → *Properties → Digital Signatures* - the publisher is Jose Mondragon.
-- **Health:** run `SpeechToText.exe --selftest` - it loads the speech model and transcribes a test signal without opening a window, writes `selftest.log`, and exits with code 0 when everything works. CI runs this exact check on every release before it can publish.
+- **Health:** run `SpeechToText.exe --selftest` - it loads the speech model, transcribes a test signal, and runs one sentence through the
+  offline translator, all without opening a window; it writes `selftest.log` and exits with code 0 when everything works. The translator leg
+  needs its model, a one-time 68 MB download; with no model and no network it is reported as skipped rather than failed. CI runs this exact
+  check on every release before it can publish, in a strict mode where a skip is a failure.
 
 ## Development
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest tests/        # 60 tests
+python -m pytest tests/        # 240 tests, one skipped off Windows; tests/test_app.py opens a real window
 ```
 
 ```
@@ -422,16 +472,17 @@ src/
   translator.py      EN<->ES translation: the three modes and the online fallback chain
   local_mt.py        the offline translator: model download, verification, CTranslate2
   languages.py       the pane languages and the pairing between them
-  settings.py        remembers the checkboxes between launches
+  settings.py        remembers the checkboxes and the translation mode between launches
   transcript.py      entry numbering and the "#3 · 2:41 PM" headers
   dispatch.py        worker thread -> Tk main loop hand-off
   hotkeys.py         global hotkeys, and the no-op stand-in off Windows
   app.py             CustomTkinter two-pane UI, mini mode, recording flow
-tests/               pytest suite (235 tests across every module above)
+tests/               pytest suite (240 tests across every module above except hotkeys.py)
 scripts/
   build_release.ps1  Windows: PyInstaller -> the two release zips
   build_macos.sh     macOS: PyInstaller -> .app -> .dmg (unsigned)
   lock_hashes.py     regenerates requirements-lock.txt from the PyPI API
+  convert_mt_models.py  rebuilds the offline translation models for the "models" release
 ```
 
 Both build scripts take a stage argument so CI can sign between building and

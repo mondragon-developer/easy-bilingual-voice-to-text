@@ -1,9 +1,16 @@
-## Speech to Text v2.2.0 - translation that works offline
+## Speech to Text v2.2.1 - no network at all once the models are here
 
 Dictate in **English or Spanish**, get both languages side by side, with
-everything - now including the translation - running on your own computer.
+everything - including the translation - running on your own computer.
 
-**New in this release:** the translator no longer needs the internet. The
+**Fixed in this release:** a launch with the speech model already downloaded
+used to make one small request to Hugging Face to check the model's version,
+even with Translate set to Off. It no longer does: once the models are on your
+disk, the app opens no connection at all. The `--selftest` health check also
+no longer fails on a machine with no internet just because the offline
+translator's model has not been fetched yet; it reports that leg as skipped.
+
+**From v2.2.0:** the translator no longer needs the internet. The
 *Translate (online)* checkbox has become a three-way switch in the bottom bar:
 
 - **Offline** (the new default): the translation is made on your computer.
@@ -38,9 +45,9 @@ clipboard. Speak Spanish, paste English.
 
 | Your computer | Download this | Size |
 |---|---|---|
-| **Mac** with Apple Silicon (M1 or later) | `SpeechToText-macOS-AppleSilicon.dmg` | ~81 MB |
+| **Mac** with Apple Silicon (M1 or later) | `SpeechToText-macOS-AppleSilicon.dmg` | ~82 MB |
 | **Windows PC** with an NVIDIA graphics card | `SpeechToText-Windows-GPU.zip` | ~1.5 GB |
-| **Any other Windows PC** | `SpeechToText-Windows-CPU.zip` | ~98 MB |
+| **Any other Windows PC** | `SpeechToText-Windows-CPU.zip` | ~99 MB |
 | An **Intel** Mac | No download yet - see the [README](README.md#install---macos) | - |
 
 Not sure which Mac you have? Apple menu > **About This Mac**. If the *Chip*
@@ -160,11 +167,11 @@ three times as long for exactly the same words.
 Previously every checkbox reset to its default each time you opened the app,
 which was tolerable with two and annoying with three.
 
-Now **Auto-copy**, **Translate (online)** and **Always copy English** are saved
-the moment you change them, and restored the next time you start. There is
-nothing to set up and no *Save settings* button - it simply works.
+Now **Auto-copy**, the **Translate** setting and **Always copy English** are
+saved the moment you change them, and restored the next time you start. There
+is nothing to set up and no *Save settings* button - it simply works.
 
-The app writes one small file for this, holding only those three switches.
+The app writes one small file for this, holding only those three choices.
 Never any of your text:
 
 | | |
@@ -192,9 +199,9 @@ write to people in English.
 
 Things worth knowing:
 
-- **It needs *Translate (online)* switched on**, because the English version is
-  the translation. With translation off the box greys out, rather than
-  pretending to work.
+- **It needs Translate set to *Offline* or *Online***, because the English
+  version is the translation. With translation off the box greys out, rather
+  than pretending to work.
 - **It is off by default**, so nothing changes for anyone who does not want it.
 - **Dictating in English changes nothing** - what you said is already English.
 - **The clipboard fills a moment later than usual**, once the translation
@@ -244,8 +251,9 @@ written to a file. Both languages appear side by side, fully editable, and the
 text lands on your clipboard automatically. There is a mini always-on-top mode,
 and global hotkeys (`Ctrl+Alt+R`) on Windows.
 
-Untick **Translate (online)** and the app makes **zero** network connections.
-Translation is the only thing that ever leaves your computer, and it sends text
+Leave **Translate** on *Offline* (the default) or set it to *Off*, and the app
+makes **zero** network connections once its models are downloaded. *Online*
+translation is the only thing that ever leaves your computer, and it sends text
 only, never audio. See [Privacy & security](README.md#privacy--security), or
 the plain-English guide, [How this app works](HOW_IT_WORKS.md).
 

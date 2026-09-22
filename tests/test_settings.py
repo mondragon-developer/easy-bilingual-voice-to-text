@@ -41,6 +41,12 @@ class TestLoading:
         """Nothing leaves the machine unless someone chooses Online."""
         assert DEFAULTS["translate_mode"] == "offline"
 
+    def test_the_accepted_modes_are_the_translators_modes(self):
+        """settings.py stays import-free, so the two lists are literals;
+        a drift would silently reset a valid saved mode to the default."""
+        from src.translator import MODES
+        assert CHOICES["translate_mode"] == MODES
+
     @pytest.mark.parametrize("mode", CHOICES["translate_mode"])
     def test_every_mode_round_trips(self, store, mode):
         store.save({**DEFAULTS, "translate_mode": mode})

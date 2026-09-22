@@ -74,6 +74,27 @@ def _add_nvidia_dll_dirs():
         return
 
 
+def _open_model(WhisperModel, name, device, compute_type):
+    """Build a WhisperModel from the local cache, downloading only on a miss.
+
+    faster-whisper's default is to ask the Hugging Face hub for the model's
+    current revision on every construction, even when the weights are
+    already cached. That is one network round trip per launch that the app
+    never needed and that the privacy notes promise it does not make. The
+    cache is tried first with the network switched off; only a genuine cache
+    miss (a first run, or a wiped cache) goes online.
+
+    A model that is cached but fails to initialise on the device raises
+    something other than ``FileNotFoundError`` and is not retried here: the
+    caller's device fallback handles it.
+    """
+    try:
+        return WhisperModel(name, device=device, compute_type=compute_type,
+                            local_files_only=True)
+    except FileNotFoundError:
+        return WhisperModel(name, device=device, compute_type=compute_type)
+
+
 class Transcriber:
     """Thin wrapper around a lazily loaded faster-whisper model."""
 
@@ -114,8 +135,8 @@ class Transcriber:
         if sys.platform != "darwin":
             try:
                 self.model_name = override or MODEL_NAME
-                self.model = WhisperModel(self.model_name, device="cuda",
-                                          compute_type="float16")
+                self.model = _open_model(WhisperModel, self.model_name,
+                                         "cuda", "float16")
                 # The warm-up has to sit inside this try. Constructing the
                 # CUDA model only needs the driver; cuBLAS is loaded at the
                 # first matmul. On a PC with an NVIDIA driver but no CUDA
@@ -131,8 +152,8 @@ class Transcriber:
 
         if self.model is None:
             self.model_name = override or CPU_MODEL_NAME
-            self.model = WhisperModel(self.model_name, device="cpu",
-                                      compute_type="int8")
+            self.model = _open_model(WhisperModel, self.model_name,
+                                     "cpu", "int8")
             self.device_label = "CPU (int8)"
             self._warm_up(np)
 
