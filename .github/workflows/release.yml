@@ -132,6 +132,7 @@ jobs:
       - name: Self-test the built exe
         env:
           STT_MODEL: tiny  # small download; the code path is identical
+          STT_SELFTEST_STRICT: "1"  # the offline translator must run, not skip
         run: |
           $p = Start-Process dist\SpeechToText\SpeechToText.exe -ArgumentList "--selftest" -Wait -PassThru
           if (Test-Path selftest.log) { Get-Content selftest.log }
@@ -168,6 +169,7 @@ jobs:
       - name: Self-test the built .app
         env:
           STT_MODEL: tiny  # small download; the code path is identical
+          STT_SELFTEST_STRICT: "1"  # the offline translator must run, not skip
         run: |
           ./dist/SpeechToText.app/Contents/MacOS/SpeechToText --selftest
           [ -f selftest.log ] && cat selftest.log

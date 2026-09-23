@@ -233,15 +233,6 @@ class TestLocalTranslator:
         with pytest.raises(KeyError):
             LocalTranslator(ensure=ensure).translate("Bonjour.", "fr", "en")
 
-    def test_is_ready_reflects_the_files_on_disk(self, tmp_path):
-        local = LocalTranslator(root=tmp_path)
-        assert local.is_ready("es", "en") is False
-        folder = tmp_path / "opus-mt-es-en"
-        folder.mkdir()
-        for name in ("model.bin", "source.spm", "target.spm"):
-            (folder / name).write_bytes(b"x")
-        assert local.is_ready("es", "en") is True
-
 
 class TestEngine:
     """The CTranslate2 call shape, with the libraries faked."""

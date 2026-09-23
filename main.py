@@ -2,12 +2,21 @@
 
 Run the app:       python main.py   (or SpeechToText.exe)
 Verify a build:    SpeechToText.exe --selftest
-                   Loads the real Whisper model and transcribes a test tone
+                   Loads the real Whisper model and transcribes a test tone,
+                   then runs one sentence through the offline translator,
                    without opening a window; exits 0 on success, 1 on
                    failure. CI runs this on every release so a build whose
-                   model cannot load can never ship.
+                   models cannot load can never ship.
+
+                   The translator's model is a one-time 68 MB download. With
+                   no network and no model, that leg is reported as skipped
+                   rather than failed, so the health check still tells the
+                   truth about an installed app. CI sets STT_SELFTEST_STRICT=1,
+                   where a skip is a failure: a release must prove the whole
+                   path.
 """
 
+import os
 import sys
 
 
@@ -23,6 +32,27 @@ def _report(message: str):
             fh.write(message + "\n")
     except OSError:
         pass
+
+
+def _selftest_offline_mt() -> str:
+    """One sentence through the offline translator; what to print for it.
+
+    Raises on anything except a download that could not happen for want of
+    a network, which counts as a skip unless STT_SELFTEST_STRICT is set.
+    """
+    import requests
+
+    from src.local_mt import LocalTranslator
+
+    try:
+        translated = LocalTranslator().translate("Hola mundo.", "es", "en")
+    except (requests.ConnectionError, requests.Timeout):
+        if os.environ.get("STT_SELFTEST_STRICT"):
+            raise
+        return "skipped (model not downloaded yet and no network to fetch it)"
+    if not translated:
+        raise RuntimeError("offline translator returned nothing")
+    return repr(translated)
 
 
 def selftest() -> int:
@@ -49,14 +79,10 @@ def selftest() -> int:
         # build can break: CTranslate2 loading a second model type, plus the
         # sentencepiece extension. One real sentence through the es-en model
         # proves both, at the cost of that model's one-time download.
-        from src.local_mt import LocalTranslator
-
-        translated = LocalTranslator().translate("Hola mundo.", "es", "en")
-        if not translated:
-            raise RuntimeError("offline translator returned nothing")
+        mt_note = _selftest_offline_mt()
         _report(f"SELFTEST OK: model={transcriber.model_name} "
                 f"device={device} (text={text!r}, lang={lang}) "
-                f"offline-mt={translated!r} "
+                f"offline-mt={mt_note} "
                 f"ui=customtkinter {ctk.__version__}")
         return 0
     except Exception as exc:  # noqa: BLE001 - report anything that broke

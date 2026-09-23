@@ -4,7 +4,7 @@ The models are OPUS-MT (Helsinki-NLP), converted once to CTranslate2 int8 and
 published as release assets of this repository. CTranslate2 is already in the
 build for Whisper, so the only thing this adds to the download is
 ``sentencepiece`` for the tokeniser and, on first use, the two models
-themselves: about 75 MB per direction, kept next to the settings file.
+themselves: about 70 MB per direction, kept next to the settings file.
 
 Why a fixed URL and a pinned SHA-256 rather than the Hugging Face hub: the hub
 is what rate limits and captive portals already break for Whisper, and a hash
@@ -219,10 +219,6 @@ class LocalTranslator:
     @property
     def root(self) -> Path:
         return Path(self._root or models_dir())
-
-    def is_ready(self, source: str, target: str) -> bool:
-        """True when no download is needed for this direction."""
-        return is_installed(MODELS[(source, target)], self.root)
 
     def _engine(self, source, target, progress=None):
         key = (source, target)
