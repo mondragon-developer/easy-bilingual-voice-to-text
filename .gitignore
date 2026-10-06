@@ -23,3 +23,6 @@ speechtotextapp.py
 findings.yaml
 SECURITY_BASELINE.md
 MACOS_PLAN.md
+
+# Scratch venv for scripts/convert_mt_models.py (transformers + torch)
+convenv/

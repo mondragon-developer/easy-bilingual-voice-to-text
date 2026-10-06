@@ -3,17 +3,17 @@
 Run the app:       python main.py   (or SpeechToText.exe)
 Verify a build:    SpeechToText.exe --selftest
                    Loads the real Whisper model and transcribes a test tone,
-                   then runs one sentence through the offline translator,
-                   without opening a window; exits 0 on success, 1 on
-                   failure. CI runs this on every release so a build whose
-                   models cannot load can never ship.
+                   then runs one sentence through the offline translator and
+                   one through the grammar model, without opening a window;
+                   exits 0 on success, 1 on failure. CI runs this on every
+                   release so a build whose models cannot load can never ship.
 
-                   The translator's model is a one-time 68 MB download. With
-                   no network and no model, that leg is reported as skipped
-                   rather than failed, so the health check still tells the
-                   truth about an installed app. CI sets STT_SELFTEST_STRICT=1,
-                   where a skip is a failure: a release must prove the whole
-                   path.
+                   The translator's and the grammar model are one-time
+                   downloads. With no network and no model, those legs are
+                   reported as skipped rather than failed, so the health
+                   check still tells the truth about an installed app. CI
+                   sets STT_SELFTEST_STRICT=1, where a skip is a failure: a
+                   release must prove the whole path.
 """
 
 import os
@@ -55,6 +55,27 @@ def _selftest_offline_mt() -> str:
     return repr(translated)
 
 
+def _selftest_grammar() -> str:
+    """One sentence through the grammar model; what to print for it.
+
+    Same skip rule as the translator: no model and no network is a skip,
+    unless STT_SELFTEST_STRICT is set.
+    """
+    import requests
+
+    from src.grammar import LocalGrammar
+
+    try:
+        corrected = LocalGrammar().correct("You was there.")
+    except (requests.ConnectionError, requests.Timeout):
+        if os.environ.get("STT_SELFTEST_STRICT"):
+            raise
+        return "skipped (model not downloaded yet and no network to fetch it)"
+    if not corrected:
+        raise RuntimeError("grammar model returned nothing")
+    return repr(corrected)
+
+
 def selftest() -> int:
     """Headless build verification: model must load and transcribe."""
     import numpy as np
@@ -80,9 +101,12 @@ def selftest() -> int:
         # sentencepiece extension. One real sentence through the es-en model
         # proves both, at the cost of that model's one-time download.
         mt_note = _selftest_offline_mt()
+        # The grammar model is a third model type (T5) through the same
+        # engine; the "Rules + grammar" setting is only as good as this.
+        grammar_note = _selftest_grammar()
         _report(f"SELFTEST OK: model={transcriber.model_name} "
                 f"device={device} (text={text!r}, lang={lang}) "
-                f"offline-mt={mt_note} "
+                f"offline-mt={mt_note} grammar={grammar_note} "
                 f"ui=customtkinter {ctk.__version__}")
         return 0
     except Exception as exc:  # noqa: BLE001 - report anything that broke

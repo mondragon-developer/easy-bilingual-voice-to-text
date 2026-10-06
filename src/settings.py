@@ -1,6 +1,6 @@
 """Remembering the checkbox states between launches.
 
-Deliberately small: three booleans in a JSON file. The care here is not in the
+Deliberately small: two booleans and two choices in a JSON file. The care here is not in the
 format, it is in never letting a settings problem stop the app from starting.
 A missing file, unreadable JSON, a wrong type, a read-only disk - every one of
 them falls back to defaults and carries on.
@@ -27,6 +27,7 @@ DEFAULTS = {
     "autocopy": True,
     "translate_mode": "offline",
     "always_copy_english": False,
+    "tidy_mode": "basic",
 }
 
 #: Settings whose value must be one of a fixed set. A string of the right
@@ -34,6 +35,7 @@ DEFAULTS = {
 #: no mode at all.
 CHOICES = {
     "translate_mode": ("off", "offline", "online"),
+    "tidy_mode": ("off", "basic", "full"),
 }
 
 #: The pre-2.2 "translate" checkbox, as it maps onto today's modes. Read only

@@ -17,8 +17,8 @@ import customtkinter as ctk
 import numpy as np
 import pytest
 
-from src.app import (LANG_NAMES, MINI_BG, MODE_LABELS, MiniWidget,
-                     SpeechToTextApp)
+from src.app import (LANG_NAMES, MINI_BG, MODE_LABELS, TIDY_LABELS,
+                     TIDY_MODES, MiniWidget, SpeechToTextApp)
 from src.hotkeys import NullHotkeyManager
 from src.settings import Settings
 from src.translator import Translation, TranslationError
@@ -278,16 +278,16 @@ class TestProcessAudio:
         assert "are you online" not in status
 
     def test_download_progress_reaches_the_status_bar(self, app):
-        report = app._download_progress("es", "en")
+        report = app._download_progress("the offline translator, es to en")
         report(34_000_000, 68_000_000)
         for _ in range(5):
             app.update()
         status = app.status_lbl.cget("text")
-        assert "Downloading the offline translator" in status
+        assert "Downloading the offline translator, es to en" in status
         assert "50%" in status and "68 MB" in status
 
     def test_download_progress_only_posts_whole_percent_changes(self, app):
-        report = app._download_progress("es", "en")
+        report = app._download_progress("the grammar model")
         with patch.object(app, "_ui") as ui:
             report(1, 1000)
             report(2, 1000)
@@ -409,9 +409,10 @@ class TestSettingsPersistence:
     def test_choices_come_back_on_the_next_launch(self, tmp_path):
         store = Settings(tmp_path / "s.json")
         store.save({"autocopy": False, "translate_mode": "online",
-                    "always_copy_english": True})
+                    "always_copy_english": True, "tidy_mode": "full"})
         seen = _launch_in_child(store.path)
-        assert seen == {"autocopy": False, "english": True, "mode": "online"}
+        assert seen == {"autocopy": False, "english": True, "mode": "online",
+                        "tidy": "full"}
 
     def test_closing_saves_and_a_corrupt_file_still_starts(self, tmp_path):
         """One launch for two facts: a corrupt file on disk is not fatal on
@@ -441,7 +442,8 @@ for _ in range(50):
         break
 print(json.dumps({"autocopy": app.autocopy_var.get(),
                   "english": app.english_clip_var.get(),
-                  "mode": app.translate_mode()}))
+                  "mode": app.translate_mode(),
+                  "tidy": app.tidy_mode()}))
 if len(sys.argv) > 2:
     app.translate_mode_var.set(MODE_LABELS[sys.argv[2]])
     app._on_close()
@@ -453,7 +455,7 @@ else:
 def _launch_in_child(settings_path, close_with_mode=None):
     """Start the app in a fresh interpreter and report what it read back.
 
-    Returns the dict the child prints: the three choices as the new window
+    Returns the dict the child prints: the four choices as the new window
     saw them. With ``close_with_mode`` the child sets that mode and exits
     through the close handler instead of plain ``destroy``.
     """
@@ -479,6 +481,91 @@ class TestTranslateModeControl:
             app.translate_mode_var.set(label)
             assert app.translate_mode() == mode
         app.translate_mode_var.set(MODE_LABELS["offline"])
+
+
+class TestTidySpeech:
+    """The transcript is tidied before the pane, the clipboard or the
+    translator see it; "Rules + grammar" adds the model, and "Off" is off."""
+
+    def _run(self, app, spoken, lang="en", grammar=None, **kwargs):
+        app.transcriber.transcribe.return_value = (spoken, lang, 0.99, 1.2)
+        app.translate = MagicMock(return_value=Translation("Hola.", "offline"))
+        app.grammar = grammar if grammar is not None else MagicMock()
+        app._process_audio(np.zeros(16000, dtype=np.float32), autocopy=True,
+                           **kwargs)
+        for _ in range(20):
+            app.update()
+
+    def test_rules_only_by_default(self, app):
+        assert app.tidy_mode() == "basic"
+
+    def test_offers_exactly_the_three_levels(self, app):
+        assert app.tidy_btn.cget("values") == [TIDY_LABELS[m] for m in TIDY_MODES]
+
+    def test_the_pane_the_clipboard_and_the_translator_all_get_the_tidy_text(
+            self, app):
+        self._run(app, "Um, you you was there.")
+        assert app._pane_text("en") == "You were there."
+        assert app.clipboard_get() == "You were there."
+        assert app.translate.call_args.args == ("You were there.",)
+
+    def test_rules_only_never_touches_the_grammar_model(self, app):
+        self._run(app, "You was there.")
+        app.grammar.correct.assert_not_called()
+
+    def test_switched_off_the_words_arrive_as_spoken(self, app):
+        self._run(app, "Um, you you was there.", tidy_mode="off")
+        assert app._pane_text("en") == "Um, you you was there."
+        app.grammar.correct.assert_not_called()
+
+    def test_spanish_is_tidied_without_the_english_rules(self, app):
+        self._run(app, "Yo yo creo que sí.", lang="es")
+        assert app._pane_text("es") == "Yo creo que sí."
+
+    def test_a_recording_that_was_only_fillers_counts_as_no_speech(self, app):
+        self._run(app, "Hmm.")
+        assert "No speech" in app.status_lbl.cget("text")
+        assert app._pane_text("en") == ""
+
+    def test_full_runs_the_rules_then_the_model_and_everything_gets_the_result(
+            self, app):
+        grammar = MagicMock()
+        grammar.correct.return_value = "I need to review it."
+        self._run(app, "I I need review it.", grammar=grammar, tidy_mode="full")
+        grammar.correct.assert_called_once()
+        assert grammar.correct.call_args.args == ("I need review it.",)
+        assert callable(grammar.correct.call_args.kwargs["progress"])
+        assert app._pane_text("en") == "I need to review it."
+        assert app.clipboard_get() == "I need to review it."
+        assert app.translate.call_args.args == ("I need to review it.",)
+
+    def test_full_leaves_spanish_to_the_rules(self, app):
+        grammar = MagicMock()
+        self._run(app, "Yo yo creo.", lang="es", grammar=grammar,
+                  tidy_mode="full")
+        grammar.correct.assert_not_called()
+        assert app._pane_text("es") == "Yo creo."
+
+    def test_a_grammar_check_that_cannot_run_is_skipped_and_said(self, app):
+        grammar = MagicMock()
+        grammar.correct.side_effect = ConnectionError("no network")
+        self._run(app, "You was there.", grammar=grammar, tidy_mode="full")
+        assert app._pane_text("en") == "You were there."
+        assert app._pane_text("es") == "Hola."
+        status = app.status_lbl.cget("text")
+        assert status.startswith("Done")
+        assert "grammar check skipped" in status
+
+    def test_the_level_is_remembered(self, app, tmp_path):
+        original = app.settings
+        app.settings = Settings(tmp_path / "s.json")
+        try:
+            app.tidy_var.set(TIDY_LABELS["full"])
+            app._save_settings()
+            assert app.settings.load()["tidy_mode"] == "full"
+        finally:
+            app.settings = original
+            app.tidy_var.set(TIDY_LABELS["basic"])
 
 
 class TestEnglishClipCheckbox:

@@ -27,12 +27,13 @@ copied or pasted.
 - 🔌 **Translation works offline** - the translator runs on your computer too (downloaded once, about 70 MB per direction); switch to *Online* for Google's wording when you want it
 - 🗂️ **One entry per recording** - each dictation starts a new block headed by its number and time; the headers are never copied or pasted
 - ✅ **Precise** - Whisper produces punctuated, correctly spelled text
+- 🧹 **Tidy speech** - "I, I think we, we should" becomes "I think we should"; "um" and "uh" go; "you was", "he don't" and "a apple" are corrected by rules that never touch a sentence that was already right. **Rules + grammar** adds an offline grammar model for English that handles tense, word order and the rest ("I need review it" to "I need to review it", "player soccer" to "soccer player"), with a guard that keeps your words: it may fix, never rephrase, and never change a name or a number
 - ⚡ **Fast** - GPU-accelerated on NVIDIA cards (17x realtime on a modern GPU); automatic CPU mode everywhere else
 - ⏱️ **Record as long as you need** - Record / Stop whenever you want, up to 30 minutes in one take (audio is held in memory, so it stops there rather than filling your RAM; it transcribes what it captured)
 - ✏️ **Editable panes** - fix anything by hand; right-click menu, Ctrl+A/C/X/V, undo
 - 📋 **Auto-copy** - dictated text lands on your clipboard, ready to paste anywhere
 - 🇬🇧 **Always copy English** - optional: dictate in Spanish, paste in English, without touching the panes
-- 💾 **Remembers your choices** - the two checkboxes and the translation mode stay as you left them next time you open the app
+- 💾 **Remembers your choices** - the checkboxes and the translation mode stay as you left them next time you open the app
 - 🔘 **Mini mode** - collapse to a tiny always-on-top pill at the screen edge
 - ⌨️ **Global hotkeys** (Windows) - record from inside any app
 - 🔒 **Private by design** - audio never leaves your computer, and with the default *Offline* translation neither does your text. Only the *Online* mode sends each recording's transcribed **text** (never audio) to Google Translate
@@ -75,7 +76,7 @@ product pages before choosing.
 - **A supply chain you can audit.** Release builds install from a lockfile that pins versions *and* artifact hashes, every GitHub Action is
   pinned to a commit, the Windows binary is signed through Azure Trusted Signing, and the translation models are verified against a SHA-256
   in the source before they are unpacked. The build logs are public.
-- **Small, readable Python.** Ten modules, each with one job, and a test suite that covers every one of them that can be tested without a
+- **Small, readable Python.** Twelve modules, each with one job, and a test suite that covers every one of them that can be tested without a
   live keyboard hook - including the UI, the settings file surviving corruption, and the model installer refusing a tampered download.
 
 ## Install - Windows
@@ -366,6 +367,7 @@ long for exactly the same words. See the measurements in
 | Edit text | Click and type; right-click for Cut/Copy/Paste; `Ctrl+Z` undo |
 | Auto-copy after dictation | Checkbox in the bottom bar (on by default) |
 | Always paste in English | Tick **Always copy English** (off by default; needs Translate on) |
+| Tidy what you said | **Tidy speech: Off / Rules / Rules + grammar** in the bottom bar. *Rules* (default): stuttered words and phrases said once, fillers removed, and the English slips with one right answer corrected ("you was", "he don't", "a apple", "more better"). *Rules + grammar*: the same, then an offline grammar model for English (about 710 MB, downloaded once on first use; adds under a second per recording on CPU). *Off*: every word as spoken |
 | Keep your choices | Automatic - they are saved as you change them |
 | Translation mode | **Translate: Off / Offline / Online** in the bottom bar. *Offline* (default) translates on your computer; *Online* asks Google first and falls back to MyMemory, then to the offline model; *Off* translates nothing |
 
@@ -417,10 +419,12 @@ without saying so, and would turn Spanish into English-shaped nonsense.
   - **Off**: nothing is translated and nothing is sent.
 - **About the global hotkeys (Windows):** Ctrl+Alt+R / Ctrl+Alt+M are implemented with the Python [`keyboard`](https://github.com/boppreh/keyboard)
   library, which registers a system-wide keyboard hook - the standard technique every hotkey utility uses, and one some antivirus tools flag
-  because keyloggers use hooks too. This app registers exactly two hotkey patterns and **never reads, stores, or transmits keystrokes** - the        entire usage is ~10 lines in [`src/app.py`](src/app.py) (`_register_global_hotkeys`),
+  because keyloggers use hooks too. This app registers exactly two hotkey patterns and **never reads, stores, or transmits keystrokes** - the entire usage is the short [`src/hotkeys.py`](src/hotkeys.py),
   and the hook is released on exit. On macOS and Linux the hook needs elevated permissions, so the app simply disables global hotkeys there.
 - Auto-copy writes to your clipboard only when the checkbox is on.
 - **Always copy English** changes only *which* text is copied, never whether anything is sent. It uses the translation the app already made, so it adds no extra network call.
+- **Tidy speech** at *Rules* is a set of rules in [`src/cleanup.py`](src/cleanup.py), not a language model: nothing is downloaded and nothing is sent. It runs before the translation, so the translator sees the tidied text.
+- **Rules + grammar** downloads one more model, once: [CoEdIT-large](https://huggingface.co/grammarly/coedit-large) converted to CTranslate2 int8 (about 710 MB), from this repository's [`models` release](../../releases/tag/models), verified against the SHA-256 pinned in [`src/grammar.py`](src/grammar.py). It runs on your computer like everything else, and only on English. Every sentence it returns is checked against what you said: a proposal that changes a name, a number, or a word you never used is thrown away and your sentence kept. **Licence note:** CoEdIT is released by Grammarly under CC-BY-NC-4.0, which permits non-commercial use only. The app itself stays MIT; the grammar model is the one optional part with that restriction.
 - No telemetry, no analytics, no accounts. Transcripts are saved only when you click Save. Audio is never written to disk.
 - **The only things the app writes on its own** are a small settings file holding your choices, and the offline translation models in a
   `models` folder beside it - nothing else, and never any of your text. The settings file is created with owner-only permissions:
@@ -461,7 +465,7 @@ without saying so, and would turn Spanish into English-shaped nonsense.
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest tests/        # 240 tests, one skipped off Windows; tests/test_app.py opens a real window
+python -m pytest tests/        # 357 tests, one skipped off Windows; tests/test_app.py opens a real window
 ```
 
 ```
@@ -472,17 +476,19 @@ src/
   translator.py      EN<->ES translation: the three modes and the online fallback chain
   local_mt.py        the offline translator: model download, verification, CTranslate2
   languages.py       the pane languages and the pairing between them
+  cleanup.py         tidies the transcript: stutters, fillers, and the common English slips
+  grammar.py         the offline grammar model (CoEdIT through CTranslate2) and the guard that keeps your words
   settings.py        remembers the checkboxes and the translation mode between launches
   transcript.py      entry numbering and the "#3 · 2:41 PM" headers
   dispatch.py        worker thread -> Tk main loop hand-off
   hotkeys.py         global hotkeys, and the no-op stand-in off Windows
   app.py             CustomTkinter two-pane UI, mini mode, recording flow
-tests/               pytest suite (240 tests across every module above except hotkeys.py)
+tests/               pytest suite (357 tests across every module above except hotkeys.py)
 scripts/
   build_release.ps1  Windows: PyInstaller -> the two release zips
   build_macos.sh     macOS: PyInstaller -> .app -> .dmg (unsigned)
   lock_hashes.py     regenerates requirements-lock.txt from the PyPI API
-  convert_mt_models.py  rebuilds the offline translation models for the "models" release
+  convert_mt_models.py  rebuilds the offline translation and grammar models for the "models" release
 ```
 
 Both build scripts take a stage argument so CI can sign between building and

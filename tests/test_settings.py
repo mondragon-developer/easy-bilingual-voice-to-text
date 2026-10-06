@@ -27,9 +27,10 @@ class TestLoading:
 
     def test_saved_values_come_back(self, store):
         store.save({"autocopy": False, "translate_mode": "online",
-                    "always_copy_english": True})
+                    "always_copy_english": True, "tidy_mode": "full"})
         assert store.load() == {"autocopy": False, "translate_mode": "online",
-                                "always_copy_english": True}
+                                "always_copy_english": True,
+                                "tidy_mode": "full"}
 
     def test_a_missing_key_falls_back_to_its_default(self, store):
         store.path.write_text(json.dumps({"autocopy": False}), encoding="utf-8")

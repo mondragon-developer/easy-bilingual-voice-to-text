@@ -17,7 +17,9 @@ a small gray header (``#3 · 2:41 PM``); the same number and time head the
 entry in both panes, so the two sides line up. Headers are display only -
 every copy path strips them, so what you paste is just the words. Both panes
 are plain editable text with native Ctrl+C/X/V, a right-click menu, and
-Ctrl+A select-all.
+Ctrl+A select-all. With "Tidy speech" on (the default) the transcript goes
+through ``cleanup.tidy`` first, so stutters, fillers and the commonest
+English slips never reach the pane, the clipboard or the translator.
 
 Mini mode collapses the app into a small always-on-top pill (record button +
 level meter) docked at the screen edge; the global hotkeys Ctrl+Alt+R
@@ -36,7 +38,9 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
 from . import __version__
+from .cleanup import tidy
 from .dispatch import UiDispatcher
+from .grammar import LocalGrammar
 from .hotkeys import HOTKEY_MINI, HOTKEY_RECORD
 from .hotkeys import create as create_hotkey_manager
 from .languages import DEFAULT_LANG, LANG_NAMES, PANE_ORDER, counterpart
@@ -44,7 +48,8 @@ from .recorder import MAX_RECORDING_SECONDS, SAMPLE_RATE, AudioRecorder
 from .settings import Settings
 from .transcriber import Transcriber
 from .transcript import TranscriptLog
-from .translator import MODES, TranslationError, translate
+from .translator import (MODES, TranslationError, describe_failure,
+                         translate)
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
@@ -63,6 +68,12 @@ STAMP_COLOR = "#6b7280"
 STAMP_TAG = "stamp"          # marks entry headers, which no copy path emits
 #: Translation modes as the segmented button shows them, in MODES order.
 MODE_LABELS = {"off": "Off", "offline": "Offline", "online": "Online"}
+
+#: Tidy-speech settings values, in the order the UI shows them, with their
+#: labels. "basic" is the rules in ``cleanup``; "full" adds the grammar
+#: model in ``grammar`` for English.
+TIDY_MODES = ("off", "basic", "full")
+TIDY_LABELS = {"off": "Off", "basic": "Rules", "full": "Rules + grammar"}
 
 
 def _asset_path(name: str) -> str:
@@ -96,7 +107,7 @@ class SpeechToTextApp(ctk.CTk):
     """
 
     def __init__(self, recorder=None, transcriber=None, translator=None,
-                 hotkeys=None, settings=None):
+                 hotkeys=None, settings=None, grammar=None):
         """
         Collaborators are injected with working defaults, so the app is still
         ``SpeechToTextApp()`` in ``main.py`` while a test can hand it a fake
@@ -110,6 +121,8 @@ class SpeechToTextApp(ctk.CTk):
             hotkeys: Object with the ``hotkeys`` manager interface.
             settings: Object with the ``Settings`` interface, for remembering
                 the checkboxes between launches.
+            grammar: Object with the ``LocalGrammar`` interface, used only
+                when Tidy speech is set to "Rules + grammar".
         """
         super().__init__()
         self.title(f"Speech to Text v{__version__} - EN / ES")
@@ -121,6 +134,7 @@ class SpeechToTextApp(ctk.CTk):
         self.transcriber = (transcriber if transcriber is not None
                             else Transcriber())
         self.translate = translator if translator is not None else translate
+        self.grammar = grammar if grammar is not None else LocalGrammar()
         self.hotkeys = (hotkeys if hotkeys is not None
                         else create_hotkey_manager())
         self.log = TranscriptLog()
@@ -138,6 +152,7 @@ class SpeechToTextApp(ctk.CTk):
         # opt-in rather than a surprise for anyone upgrading.
         self.english_clip_var = tk.BooleanVar(
             value=saved["always_copy_english"])
+        self.tidy_var = tk.StringVar(value=TIDY_LABELS[saved["tidy_mode"]])
         self._dispatch = UiDispatcher(self, on_error=self._on_ui_error)
 
         self._build_ui()
@@ -281,12 +296,27 @@ class SpeechToTextApp(ctk.CTk):
         self._sync_english_clip_state()
 
         bottom.grid_columnconfigure(5, weight=1)
+
+        # Second row: row 0 is full at the minimum window width, and this
+        # is a different kind of choice from the ones above - it changes
+        # the words, not where they go.
+        # In a frame of their own, so the label and the switch sit together
+        # instead of stretching across the columns row 0 laid out.
+        tidy_row = ctk.CTkFrame(bottom, fg_color="transparent")
+        tidy_row.grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        ctk.CTkLabel(tidy_row, text="Tidy speech:", font=UI_FONT
+                     ).grid(row=0, column=0, sticky="w")
+        self.tidy_btn = ctk.CTkSegmentedButton(
+            tidy_row, values=[TIDY_LABELS[m] for m in TIDY_MODES],
+            variable=self.tidy_var, font=UI_FONT, height=28,
+            command=self._save_settings)
+        self.tidy_btn.grid(row=0, column=1, sticky="w", padx=(8, 0))
         # Its own row: hotkey hint + model + device runs long, and a Tk label
         # does not clip to its cell - sharing row 0 let it draw over the
         # Translate checkbox once the text outgrew the window width.
         self.device_lbl = ctk.CTkLabel(bottom, text="", font=("Segoe UI", 12),
                                        text_color="#9ca3af", anchor="e")
-        self.device_lbl.grid(row=1, column=0, columnspan=6, sticky="e",
+        self.device_lbl.grid(row=1, column=3, columnspan=3, sticky="e",
                              pady=(6, 0))
 
     def _attach_editing_helpers(self, box):
@@ -362,7 +392,7 @@ class SpeechToTextApp(ctk.CTk):
         inner.tag_add("sel", "1.0", "end-1c")
         inner.mark_set("insert", "end-1c")
 
-    def _save_settings(self):
+    def _save_settings(self, _label=None):
         """Persist the checkbox states.
 
         Called on every toggle rather than only at exit, so a crash or a force
@@ -374,12 +404,19 @@ class SpeechToTextApp(ctk.CTk):
             "autocopy": self.autocopy_var.get(),
             "translate_mode": self.translate_mode(),
             "always_copy_english": self.english_clip_var.get(),
+            "tidy_mode": self.tidy_mode(),
         })
 
     def translate_mode(self) -> str:
         """The selected translation mode as a settings value, e.g. ``"offline"``."""
         label = self.translate_mode_var.get()
         return next(mode for mode, shown in MODE_LABELS.items()
+                    if shown == label)
+
+    def tidy_mode(self) -> str:
+        """The selected tidy-speech level as a settings value, e.g. ``"basic"``."""
+        label = self.tidy_var.get()
+        return next(mode for mode, shown in TIDY_LABELS.items()
                     if shown == label)
 
     def _on_translate_mode_changed(self, _label=None):
@@ -513,7 +550,8 @@ class SpeechToTextApp(ctk.CTk):
             threading.Thread(target=self._process_audio,
                              args=(audio, self.autocopy_var.get(),
                                    self.translate_mode(),
-                                   self.english_clip_var.get()),
+                                   self.english_clip_var.get(),
+                                   self.tidy_mode()),
                              daemon=True).start()
 
     def _tick_recording(self):
@@ -543,7 +581,7 @@ class SpeechToTextApp(ctk.CTk):
     # ------------------------------------------------- transcribe/translate
 
     def _process_audio(self, audio, autocopy, mode="offline",
-                       prefer_english=False):
+                       prefer_english=False, tidy_mode="basic"):
         """Worker thread: audio -> text -> (optionally) translation.
 
         All UI updates are scheduled on the main loop with ``after()``.
@@ -560,6 +598,13 @@ class SpeechToTextApp(ctk.CTk):
                 clipboard is written after the translation arrives rather than
                 as soon as the words appear, and falls back to the spoken text
                 if the translation fails.
+            tidy_mode (str): One of ``TIDY_MODES``. ``"basic"`` runs the
+                transcript through ``cleanup.tidy`` before anything sees it,
+                so the pane, the clipboard and the translator all get the
+                stutter-free version; ``"full"`` then adds the grammar model
+                for English. A grammar check that cannot run (the model is
+                not downloaded and there is no network) is skipped and
+                said so in the status bar, never a failure.
         """
         if audio.size < SAMPLE_RATE * 0.3:  # under ~0.3 s of audio
             self._ui(self._finish, "Recording was too short - nothing to transcribe.")
@@ -571,12 +616,25 @@ class SpeechToTextApp(ctk.CTk):
         except Exception as exc:
             self._ui(self._finish, f"Transcription failed: {exc}")
             return
+        if tidy_mode != "off":
+            text = tidy(text, lang)
         if not text:
             self._ui(self._finish, "No speech detected.")
             return
 
         speed = f"{duration:.0f}s of audio in {elapsed:.1f}s"
         other = counterpart(lang)
+
+        grammar_note = ""
+        if tidy_mode == "full" and lang == DEFAULT_LANG:
+            self._ui(self._set_status,
+                     f"Transcribed {speed} - checking the grammar…")
+            try:
+                text = self.grammar.correct(
+                    text, progress=self._download_progress("the grammar model"))
+            except Exception as exc:  # noqa: BLE001 - the reason goes on screen
+                grammar_note = (" · grammar check skipped: "
+                                f"{describe_failure(exc)}")
 
         # "Always copy English" only has anything to do when the spoken
         # language is not already English and a translation is actually
@@ -592,13 +650,16 @@ class SpeechToTextApp(ctk.CTk):
 
         if not do_translate:
             self._ui(self._finish,
-                     f"Done - transcribed {speed}{copied}. (Translation off.)")
+                     f"Done - transcribed {speed}{copied}{grammar_note}. "
+                     "(Translation off.)")
             return
         self._ui(self._set_status,
                  f"Transcribed {speed} - translating to {LANG_NAMES[other]}…")
         try:
-            result = self.translate(text, source=lang, target=other, mode=mode,
-                                    progress=self._download_progress(lang, other))
+            result = self.translate(
+                text, source=lang, target=other, mode=mode,
+                progress=self._download_progress(
+                    f"the offline translator, {lang} to {other}"))
         except Exception as exc:  # noqa: BLE001 - the reason goes on screen
             # Fall back to the spoken text: a failed translation must not
             # leave the clipboard holding whatever was there before.
@@ -609,7 +670,8 @@ class SpeechToTextApp(ctk.CTk):
             self._ui(self._finish,
                      f"Transcribed, but translation failed - {reason}. "
                      f"({LANG_NAMES[other]} pane not updated.)"
-                     f"{' · spoken text copied instead' if defer_copy else copied}")
+                     f"{' · spoken text copied instead' if defer_copy else copied}"
+                     f"{grammar_note}")
             return
         self._ui(self._append_to_pane, other, result.text)
         if defer_copy:
@@ -617,13 +679,17 @@ class SpeechToTextApp(ctk.CTk):
             copied = " · English copied to clipboard"
         self._ui(self._finish,
                  f"Done - transcribed {speed} · translated {result.engine}"
-                 f"{copied}.")
+                 f"{copied}{grammar_note}.")
 
-    def _download_progress(self, source, target):
-        """A progress callback for the one-time offline model download.
+    def _download_progress(self, what):
+        """A progress callback for a one-time offline model download.
 
         Only whole-percent changes reach the status bar: the download reports
         every 64 KB, and posting each one would flood the main loop.
+
+        Args:
+            what: What is being fetched, as the status bar should name it,
+                e.g. ``"the grammar model"``.
         """
         shown = {"pct": -1}
 
@@ -634,8 +700,7 @@ class SpeechToTextApp(ctk.CTk):
             shown["pct"] = pct
             size = f"{total // 1_000_000} MB" if total else "one time"
             self._ui(self._set_status,
-                     f"Downloading the offline translator ({source} to "
-                     f"{target}, {size}, once)… {pct}%")
+                     f"Downloading {what} ({size}, once)… {pct}%")
         return report
 
     def _show_result(self, text, lang, prob, autocopy=False):

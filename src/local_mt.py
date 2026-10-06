@@ -34,18 +34,33 @@ DOWNLOAD_TIMEOUT = 30.0
 _MAX_TOKENS = 400
 
 
+#: What a Marian translation model consists of: the weights and a
+#: SentencePiece tokeniser for each side.
+_MARIAN_FILES = ("model.bin", "source.spm", "target.spm")
+
+
 @dataclass(frozen=True)
 class ModelSpec:
-    """One translation direction: where its files come from and how big."""
+    """One downloadable model: where its files come from and how big.
+
+    Written for the translation directions, and reused by the grammar
+    model (``grammar.py``), which is the same engine with one tokeniser and
+    its own folder name.
+    """
 
     source: str
     target: str
     sha256: str
     size_mb: int
+    #: The files that must be present for the engine to open the model. A
+    #: folder missing any of them is not a model.
+    files: tuple = _MARIAN_FILES
+    #: Folder and archive name; empty means the OPUS-MT convention.
+    folder: str = ""
 
     @property
     def name(self) -> str:
-        return f"opus-mt-{self.source}-{self.target}"
+        return self.folder or f"opus-mt-{self.source}-{self.target}"
 
     @property
     def url(self) -> str:
@@ -69,17 +84,13 @@ def models_dir() -> Path:
     return default_path().parent / "models"
 
 
-#: What ``_Engine`` opens. A folder missing any of these is not a model.
-_REQUIRED_FILES = ("model.bin", "source.spm", "target.spm")
-
-
-def _is_complete(folder) -> bool:
-    return all((Path(folder) / name).is_file() for name in _REQUIRED_FILES)
+def _is_complete(folder, files=_MARIAN_FILES) -> bool:
+    return all((Path(folder) / name).is_file() for name in files)
 
 
 def is_installed(spec: ModelSpec, root=None) -> bool:
     """True when every file the engine needs is present for ``spec``."""
-    return _is_complete(Path(root or models_dir()) / spec.name)
+    return _is_complete(Path(root or models_dir()) / spec.name, spec.files)
 
 
 def _safe_members(archive: zipfile.ZipFile, dest: Path):
@@ -167,11 +178,11 @@ def install(spec: ModelSpec, root=None, progress=None, session=None) -> Path:
         # a model without its tokenisers would install and then fail on
         # every translation.
         inner = scratch
-        if not _is_complete(inner):
+        if not _is_complete(inner, spec.files):
             subdirs = [p for p in scratch.iterdir() if p.is_dir()]
-            if len(subdirs) == 1 and _is_complete(subdirs[0]):
+            if len(subdirs) == 1 and _is_complete(subdirs[0], spec.files):
                 inner = subdirs[0]
-        if not _is_complete(inner):
+        if not _is_complete(inner, spec.files):
             raise ValueError(
                 f"{spec.name}: archive does not contain a complete model")
         if final.exists():

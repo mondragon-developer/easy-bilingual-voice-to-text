@@ -1,7 +1,55 @@
-## Speech to Text v2.2.1 - no network at all once the models are here
+## Speech to Text v2.3.0 - it writes what you meant
 
 Dictate in **English or Spanish**, get both languages side by side, with
 everything - including the translation - running on your own computer.
+
+**New in this release: Tidy speech.** Spoken sentences come with stutters and
+thinking noises, and the app used to write all of them down: "Um, I, I think
+we, we should go." It now writes "I think we should go." Three things happen
+before the words reach the panel, the clipboard or the translator:
+
+- **Repeats are said once.** "I I I" becomes "I", "like, like" becomes "like",
+  and a phrase said twice ("I will I will help you") is kept once. Doubles that
+  are real English, such as "had had" and "that that", are left alone.
+- **Fillers go.** "um", "uh", "erm", "hmm" and their longer spellings, along
+  with the comma that belonged to them.
+- **English slips with exactly one fix are corrected.** "you was" to "you
+  were", "he don't" to "he doesn't", "a apple" to "an apple", "more better" to
+  "better", "people is" to "people are", "informations" to "information".
+
+These are rules, not another model: nothing is downloaded, nothing is sent,
+and a sentence that was already right is never touched. Spanish gets the
+repeat and filler passes; the grammar rules are English only.
+
+**And a grammar model for the rest.** Rules cannot reorder words or pick a
+tense. Set the new **Tidy speech** switch in the bottom bar to **Rules +
+grammar** and an offline grammar model reads each English sentence after the
+rules:
+
+| You said | Rules alone | Rules + grammar |
+|---|---|---|
+| you was a professional player soccer | you were a professional player soccer | you were a professional soccer player |
+| I need review it with the team | unchanged | I need to review it with the team |
+| yesterday I go to the store and I buy three apple | unchanged | yesterday I went to the store, and I bought three apples |
+| we was working in the project all the night | we were working in the project all the night | we were working on the project all night |
+
+It is a one-time download of about 710 MB, made the first time you use it,
+and it runs on your computer. It is also kept on a short leash: every
+sentence it returns is compared with what you said, and a suggestion that
+changes a name or a number, or brings in a word you never used, is thrown
+away and your sentence kept. Four candidate models were tried; the three
+smaller ones turned "Jose Mondragon" into "Marco Polo" and a "gizmo" into
+"wifi", which is why the one that ships is the large one, and why the leash
+exists at all.
+
+The switch has three positions - **Off**, **Rules** (the default) and
+**Rules + grammar** - and is remembered like the other choices. The grammar
+model (Grammarly's CoEdIT) is licensed for non-commercial use only; the app
+itself is unchanged, MIT.
+
+---
+
+## Speech to Text v2.2.1 - no network at all once the models are here
 
 **Fixed in this release:** a launch with the speech model already downloaded
 used to make one small request to Hugging Face to check the model's version,

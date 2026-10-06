@@ -93,6 +93,27 @@ translation goes into the other. Each panel therefore always holds the whole
 conversation in one language - useful when you want to send the Spanish version
 to one person and the English version to another.
 
+**It writes what you meant, not every sound you made.** Spoken sentences
+come with stutters and thinking noises: "I, I think we, we should, um, go".
+The app takes those out before showing the text, so you get "I think we
+should go". It also fixes the handful of English slips that have exactly one
+right answer, such as "you was" to "you were", "he don't" to "he doesn't" and
+"a apple" to "an apple". These are plain rules, not another brain: a sentence
+that was already correct is never touched, and word order is never changed,
+because deciding what "a professional player soccer" meant takes a reader.
+
+For the rest there is a reader: switch **Tidy speech** to **Rules + grammar**
+and a third brain, a grammar model, reads each English sentence after the
+rules and fixes what they cannot - "you was a professional player soccer"
+becomes "you were a professional soccer player", "I need review it" becomes
+"I need to review it". It is a one-time download of about 710 MB, it runs on
+your computer like everything else, and it is kept on a short leash: every
+sentence it hands back is compared with what you said, and if it changed a
+name, a number, or brought in a word you never used, your sentence is kept
+and its suggestion thrown away. It may fix your grammar; it may not decide
+what you meant. Set **Tidy speech** to **Off** if you want every word exactly
+as spoken.
+
 **Everything is editable.** The two panels are ordinary text boxes. Fix a name,
 delete a sentence, type something the app never heard. Right-click for
 cut/copy/paste, and the usual keyboard shortcuts all work.
@@ -247,6 +268,7 @@ flowchart TB
     end
 
     subgraph Tools["Small helpers behind the scenes"]
+        Tidy["Tidier<br/>drops stutters and fillers,<br/>fixes 'you was'; optionally<br/>a grammar model after it"]
         Log["Entry log<br/>numbers and time-stamps each recording"]
         Pair["Language pairing<br/>knows English goes with Spanish"]
         Runner["Messenger<br/>brings results back without<br/>freezing the window"]
@@ -255,7 +277,8 @@ flowchart TB
 
     Window -->|start and stop| Rec
     Rec -->|the sound| Brain
-    Brain -->|the words| Trans
+    Brain -->|the words| Tidy
+    Tidy -->|the words, tidied| Trans
 
     Brain -.->|results| Runner
     Trans -.->|results| Runner
@@ -271,7 +294,7 @@ flowchart TB
 
 - **Solid arrows** are the main path: the window starts the recorder, the
   recorder hands sound to the listening brain, the brain hands words to the
-  translator.
+  tidier, and the tidied words go to the translator.
 - **Dotted arrows** are results coming *back*. They all go through one place
   called the **Messenger**, and that is deliberate. Explained below.
 - The **helpers** on the right do not touch your audio at all. They just keep
@@ -457,6 +480,13 @@ dictation tool. In-app shortcuts still work whenever the window is focused.
 **It hears what you actually said.** Background noise, heavy crosstalk and very
 unusual technical vocabulary all reduce accuracy. On clean dictation it is
 excellent, including punctuation and Spanish accents.
+
+**The tidying is careful, not clever.** The rules handle stutters, fillers and
+the English mistakes that have one fix. The grammar model handles tense, word
+order and missing words, but only for English, and only when its suggestion
+keeps every name, number and word you said. A sentence that is muddled rather
+than ungrammatical comes back as it was - that edit is yours to make in the
+panel.
 
 ---
 
