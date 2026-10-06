@@ -35,6 +35,7 @@ copied or pasted.
 - 🇬🇧 **Always copy English** - optional: dictate in Spanish, paste in English, without touching the panes
 - 💾 **Remembers your choices** - the checkboxes and the translation mode stay as you left them next time you open the app
 - 🔘 **Mini mode** - collapse to a tiny always-on-top pill at the screen edge
+- 📱 **From your phone** - optional web front end: dictate in a browser anywhere, with every model still running on your own computer, reachable only by your own devices through Tailscale
 - ⌨️ **Global hotkeys** (Windows) - record from inside any app
 - 🔒 **Private by design** - audio never leaves your computer, and with the default *Offline* translation neither does your text. Only the *Online* mode sends each recording's transcribed **text** (never audio) to Google Translate
 
@@ -396,6 +397,53 @@ Every recording is its own **entry**, set off by a blank line and a small gray h
 The headers are for reading, not for pasting: **Copy**, `Ctrl+C` on a selection, `Ctrl+X`, and auto-copy all leave them out, so you paste only the
 words. **Save transcript** is the exception - the `.txt` file keeps the headers, since a saved transcript is a record of when things were said.
 
+### Use it from your phone
+
+The same dictation, from a browser on your phone, with every model still
+running on your computer and nothing of yours leaving it. The phone is a
+microphone and a screen; the computer does the work. This needs the computer
+on and the server below running, and it is the only part of the app that
+lives outside the desktop window - a separate `webapp` folder that the
+desktop app never imports, so it can be removed without touching anything.
+
+**1. On the computer**, once:
+
+```bash
+pip install -r requirements.txt -r requirements-web.txt
+python -m webapp            # or double-click scripts\web_server.bat
+```
+
+It listens on `http://127.0.0.1:8765`, on this computer only, on purpose.
+Open that address in a browser here to try it. For always-on, point a Task
+Scheduler task "at log on" at `scripts\web_server.bat`.
+
+**2. Reach it from the phone, with Tailscale.** Browsers refuse to open a
+microphone over plain `http`, and the server is deliberately not exposed to
+the network. [Tailscale](https://tailscale.com) solves both: install it on
+the computer and the phone with the same account, and only your own devices
+can see each other, over an encrypted link, wherever they are. Then, on the
+computer, one command publishes the server inside that private network with
+a real HTTPS certificate:
+
+```powershell
+tailscale serve --bg --https=443 http://127.0.0.1:8765
+```
+
+Tailscale prints the address, something like
+`https://mondra-dev.tail1234.ts.net`. Open it on the phone, allow the
+microphone, and use the browser's "Add to Home Screen" so it opens like an
+app. Settings (translation, tidy level, auto-copy) live on the phone.
+
+Do not use `tailscale funnel`, which makes the address public. If you ever
+need that, set `STT_WEB_TOKEN` on the computer first: every call then needs
+that token, and the page asks for it once.
+
+**What is different from the desktop app:** no global hotkeys and no mini
+pill (both are desktop ideas), no "Save transcript" (copy and paste
+instead), and the text is copied to the *phone's* clipboard. Everything else
+is the same, including both languages, the three tidy levels, and the exact
+same models.
+
 ## Choosing a model
 
 The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs, `small` (fast) on CPU. Override with the `STT_MODEL` environment variable:
@@ -465,7 +513,7 @@ without saying so, and would turn Spanish into English-shaped nonsense.
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest tests/        # 357 tests, one skipped off Windows; tests/test_app.py opens a real window
+python -m pytest tests/        # 379 tests, one skipped off Windows; tests/test_app.py opens a real window
 ```
 
 ```
@@ -482,13 +530,16 @@ src/
   transcript.py      entry numbering and the "#3 · 2:41 PM" headers
   dispatch.py        worker thread -> Tk main loop hand-off
   hotkeys.py         global hotkeys, and the no-op stand-in off Windows
+  pipeline.py        transcribe, tidy, correct, translate - the sequence without a window
   app.py             CustomTkinter two-pane UI, mini mode, recording flow
-tests/               pytest suite (357 tests across every module above except hotkeys.py)
+webapp/              the phone front end: FastAPI server over pipeline.py, one static page (python -m webapp)
+tests/               pytest suite (379 tests across every module above except hotkeys.py)
 scripts/
   build_release.ps1  Windows: PyInstaller -> the two release zips
   build_macos.sh     macOS: PyInstaller -> .app -> .dmg (unsigned)
   lock_hashes.py     regenerates requirements-lock.txt from the PyPI API
   convert_mt_models.py  rebuilds the offline translation and grammar models for the "models" release
+  web_server.bat     starts the phone front end (see "Use it from your phone")
 ```
 
 Both build scripts take a stage argument so CI can sign between building and

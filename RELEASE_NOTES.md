@@ -47,6 +47,15 @@ The switch has three positions - **Off**, **Rules** (the default) and
 model (Grammarly's CoEdIT) is licensed for non-commercial use only; the app
 itself is unchanged, MIT.
 
+**Also new: dictate from your phone.** Running from source, `python -m
+webapp` starts a small server on the computer, and a browser on the phone
+becomes the microphone and the screen: record, see both languages, copy.
+Every model stays on the computer; the server listens on the computer only,
+and reaching it from the phone goes through Tailscale, so only your own
+devices can see it. The README's "Use it from your phone" has the three
+steps. The desktop app is untouched by this: the web part is a separate
+folder it never imports.
+
 ---
 
 ## Speech to Text v2.2.1 - no network at all once the models are here

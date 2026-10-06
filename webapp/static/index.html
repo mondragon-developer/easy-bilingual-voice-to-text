@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f2937">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Speech to Text</title>
+<link rel="manifest" href="/static/manifest.json">
+<link rel="icon" href="/static/icon-192.png">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<style>
+  :root {
+    --bg: #1f2937; --panel: #111827; --box: #1f2937; --text: #f3f4f6;
+    --muted: #9ca3af; --record: #2563eb; --stop: #dc2626; --btn: #374151;
+    --accent: #3b82f6; --border: #374151;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { padding: 12px 16px calc(16px + env(safe-area-inset-bottom)); max-width: 900px; margin: 0 auto; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 18px; margin: 0; flex: 1; }
+  #status { color: var(--muted); font-size: 14px; min-height: 1.4em; margin: 10px 0; }
+  #record { width: 100%; padding: 18px; font-size: 20px; font-weight: 600; border: 0;
+    border-radius: 12px; color: #fff; background: var(--record); cursor: pointer; }
+  #record.recording { background: var(--stop); }
+  #record:disabled { opacity: .5; cursor: default; }
+  #badge { color: var(--muted); font-size: 14px; }
+  .panes { display: grid; gap: 12px; grid-template-columns: 1fr; margin-top: 12px; }
+  @media (min-width: 700px) { .panes { grid-template-columns: 1fr 1fr; } }
+  .pane { background: var(--panel); border-radius: 12px; padding: 12px; }
+  .pane h2 { font-size: 15px; margin: 0 0 8px; }
+  .pane textarea { width: 100%; min-height: 180px; resize: vertical; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--box); color: var(--text); padding: 10px; font: inherit; }
+  .row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+  .row button { padding: 8px 14px; border: 0; border-radius: 8px; color: #fff; background: var(--btn);
+    cursor: pointer; font: inherit; }
+  .row button.primary { background: var(--accent); }
+  .settings { display: grid; gap: 10px; grid-template-columns: 1fr; margin-top: 14px;
+    background: var(--panel); border-radius: 12px; padding: 12px; }
+  @media (min-width: 700px) { .settings { grid-template-columns: 1fr 1fr; } }
+  .settings label { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 15px; }
+  .settings select { font: inherit; background: var(--box); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 8px; }
+  .settings label.check { justify-content: flex-start; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 14px; }
+  .entry { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Speech to Text</h1>
+  <span id="badge"></span>
+</header>
+<div id="status">Connecting…</div>
+<button id="record" disabled>Record</button>
+
+<div class="panes">
+  <div class="pane">
+    <h2 id="title-en">English</h2>
+    <textarea id="pane-en" spellcheck="false"></textarea>
+    <div class="row">
+      <button class="primary" data-copy="en">Copy</button>
+      <button data-clear="en">Clear</button>
+    </div>
+  </div>
+  <div class="pane">
+    <h2 id="title-es">Español</h2>
+    <textarea id="pane-es" spellcheck="false"></textarea>
+    <div class="row">
+      <button class="primary" data-copy="es">Copy</button>
+      <button data-clear="es">Clear</button>
+    </div>
+  </div>
+</div>
+
+<div class="settings">
+  <label>Translate
+    <select id="translate_mode">
+      <option value="off">Off</option>
+      <option value="offline" selected>Offline</option>
+      <option value="online">Online</option>
+    </select>
+  </label>
+  <label>Tidy speech
+    <select id="tidy_mode">
+      <option value="off">Off</option>
+      <option value="basic" selected>Rules</option>
+      <option value="full">Rules + grammar</option>
+    </select>
+  </label>
+  <label class="check"><input type="checkbox" id="autocopy" checked> Auto-copy spoken text</label>
+  <label class="check"><input type="checkbox" id="copy_english"> Always copy English</label>
+</div>
+
+<footer id="device"></footer>
+<script src="/static/app.js"></script>
+</body>
+</html>

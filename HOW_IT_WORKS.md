@@ -133,6 +133,12 @@ of whatever else you are doing, with just a record button and a level meter.
 Drag it wherever you like. This is what makes the app usable *while* writing in
 another program.
 
+**From your phone, if you want.** An optional small server on the computer
+lets a browser on your phone be the microphone and the screen, while every
+model keeps running on the computer. Only your own devices can reach it,
+through Tailscale. Nothing changes in where your voice goes: it still goes
+to your computer and nowhere else.
+
 **Keyboard shortcuts from anywhere (Windows).** `Ctrl+Alt+R` starts and stops
 recording even when the app is not the window you are looking at. On Mac this
 is not available, because macOS requires administrator powers for it, which the

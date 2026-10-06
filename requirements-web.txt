@@ -1,0 +1,5 @@
+# The web front end (python -m webapp), on top of requirements.txt.
+# Separate on purpose: the desktop app does not need any of this.
+fastapi>=0.115
+uvicorn>=0.30
+python-multipart>=0.0.9
