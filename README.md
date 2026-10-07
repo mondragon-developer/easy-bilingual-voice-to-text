@@ -453,7 +453,8 @@ public, the server itself asks remote visitors to sign in:
 
 - Put a user name and password in a `.env` file in the project folder
   (`STT_REMOTE_USER=...`, `STT_REMOTE_PASSWORD=...`; the file is gitignored).
-  The browser asks for them once. **Local use on the PC never asks**, and
+  More accounts, a guest for instance, go in `STT_REMOTE_USERS=name:password`
+  pairs separated by commas. The browser asks for them once. **Local use on the PC never asks**, and
   **with either value missing every remote request is refused** (403), so
   an exposed server with no password set shows nothing.
 - A request counts as remote when it does not come from loopback or when it

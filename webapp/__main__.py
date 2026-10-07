@@ -27,7 +27,8 @@ def _setting(name, env):
 if __name__ == "__main__":
     env = load_env(ENV_FILE)
     app = create_app(remote_user=_setting("STT_REMOTE_USER", env),
-                     remote_password=_setting("STT_REMOTE_PASSWORD", env))
+                     remote_password=_setting("STT_REMOTE_PASSWORD", env),
+                     remote_users=_setting("STT_REMOTE_USERS", env))
     print("Remote access:",
           "enabled (sign-in required)" if app.state.remote_enabled
           else "off (STT_REMOTE_USER / STT_REMOTE_PASSWORD not set)",

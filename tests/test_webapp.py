@@ -197,6 +197,31 @@ class TestRemoteGuard:
         with TestClient(self._app(remote_user="jmond"), client=REMOTE) as client:
             assert client.get("/api/status").status_code == 403
 
+    def test_extra_accounts_sign_in_too(self):
+        app = self._app(remote_user="jmond", remote_password="pw",
+                        remote_users="guest:welcome, friend:hello")
+        with TestClient(app, client=REMOTE) as client:
+            for user, password in (("jmond", "pw"), ("guest", "welcome"),
+                                   ("friend", "hello")):
+                assert client.get("/api/status",
+                                  headers=_basic(user, password)).status_code == 200
+            assert client.get("/api/status",
+                              headers=_basic("guest", "pw")).status_code == 401
+            assert client.get("/api/status",
+                              headers=_basic("nobody", "welcome")).status_code == 401
+
+    def test_extra_accounts_alone_are_enough(self):
+        app = self._app(remote_users="guest:welcome")
+        with TestClient(app, client=REMOTE) as client:
+            assert client.get("/api/status").status_code == 401
+            assert client.get("/api/status",
+                              headers=_basic("guest", "welcome")).status_code == 200
+
+    def test_a_half_written_extra_account_is_ignored(self):
+        with TestClient(self._app(remote_users="guest:, :pw, junk"),
+                        client=REMOTE) as client:
+            assert client.get("/api/status").status_code == 403
+
     def test_the_status_says_whether_remote_access_is_on(self):
         assert self._app().state.remote_enabled is False
         assert self._app(remote_user="a", remote_password="b").state.remote_enabled is True

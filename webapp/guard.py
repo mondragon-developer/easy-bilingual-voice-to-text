@@ -61,13 +61,33 @@ def is_remote(client_host, headers) -> bool:
     return client_host not in _LOOPBACK
 
 
-def credentials_match(authorization, user, password) -> bool:
-    """Whether an ``Authorization`` header carries exactly ``user:password``.
+def parse_users(user="", password="", extra="") -> dict:
+    """The remote accounts, as ``{user: password}``.
 
-    Both halves are compared in constant time, and a header that is not
-    well-formed Basic auth is simply a mismatch.
+    ``user`` and ``password`` are the main account (``STT_REMOTE_USER`` and
+    ``STT_REMOTE_PASSWORD``). ``extra`` adds more as ``name:password`` pairs
+    separated by commas (``STT_REMOTE_USERS``), for a guest account beside
+    the owner's. A pair with an empty half is skipped, so a half-written
+    line never opens the door.
     """
-    if not authorization or not user or not password:
+    users = {}
+    if user and password:
+        users[user] = password
+    for pair in extra.split(","):
+        name, _, secret = pair.strip().partition(":")
+        if name and secret:
+            users[name] = secret
+    return users
+
+
+def credentials_match(authorization, users) -> bool:
+    """Whether an ``Authorization`` header carries one of ``users``.
+
+    Both halves are compared in constant time, an unknown user is compared
+    against a dummy so the timing does not say which names exist, and a
+    header that is not well-formed Basic auth is simply a mismatch.
+    """
+    if not authorization or not users:
         return False
     scheme, _, encoded = authorization.partition(" ")
     if scheme.lower() != "basic" or not encoded:
@@ -77,20 +97,25 @@ def credentials_match(authorization, user, password) -> bool:
     except (ValueError, UnicodeDecodeError):
         return False
     given_user, _, given_password = decoded.partition(":")
-    user_ok = hmac.compare_digest(given_user.encode(), user.encode())
-    password_ok = hmac.compare_digest(given_password.encode(), password.encode())
+    expected = users.get(given_user)
+    user_ok = expected is not None
+    password_ok = hmac.compare_digest(given_password.encode(),
+                                      (expected or "\x00").encode())
     return user_ok and password_ok
 
 
-def install(app, user, password):
+def install(app, user="", password="", extra=""):
     """Put the guard in front of every route of ``app``.
 
     Args:
         app: The FastAPI application.
-        user: Remote user name, or empty to refuse all remote use.
-        password: Remote password, or empty to refuse all remote use.
+        user: Remote user name, or empty for no main account.
+        password: Its password, or empty for no main account.
+        extra: More accounts as ``name:password`` pairs, comma separated.
+            With no account at all, every remote request is refused.
     """
-    enabled = bool(user and password)
+    users = parse_users(user, password, extra)
+    enabled = bool(users)
 
     @app.middleware("http")
     async def _guard(request: Request, call_next):
@@ -100,8 +125,7 @@ def install(app, user, password):
         if not enabled:
             return PlainTextResponse(
                 "Remote access is off on this server.", status_code=403)
-        if credentials_match(request.headers.get("authorization"),
-                             user, password):
+        if credentials_match(request.headers.get("authorization"), users):
             return await call_next(request)
         return PlainTextResponse(
             "Sign in to use this server.", status_code=401,

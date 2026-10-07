@@ -66,15 +66,17 @@ class _Models:
 
 
 def create_app(transcriber=None, remote_user="", remote_password="",
-               decode=_decode) -> FastAPI:
+               remote_users="", decode=_decode) -> FastAPI:
     """Build the application.
 
     Args:
         transcriber: Object with the ``Transcriber`` interface; the real one
             when omitted. A test hands in a fake and no model loads.
         remote_user: User name a remote browser must present (HTTP Basic).
-        remote_password: Its password. With either empty, every remote
-            request is refused; see ``guard``. Local use never signs in.
+        remote_password: Its password.
+        remote_users: More accounts, ``name:password`` pairs separated by
+            commas. With no account at all, every remote request is
+            refused; see ``guard``. Local use never signs in.
         decode: ``callable(bytes) -> numpy array`` turning an uploaded clip
             into 16 kHz samples; swapped out in tests.
     """
@@ -90,7 +92,8 @@ def create_app(transcriber=None, remote_user="", remote_password="",
 
     app = FastAPI(title="Speech to Text", version=__version__,
                   lifespan=_lifespan)
-    app.state.remote_enabled = guard.install(app, remote_user, remote_password)
+    app.state.remote_enabled = guard.install(app, remote_user, remote_password,
+                                             remote_users)
 
     @app.get("/")
     def index():
