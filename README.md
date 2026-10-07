@@ -417,6 +417,13 @@ It listens on `http://127.0.0.1:8765`, on this computer only, on purpose.
 Open that address in a browser here to try it. For always-on, point a Task
 Scheduler task "at log on" at `scripts\web_server.bat`.
 
+**Shortcut for steps 2 and 3:** with the server running, open PowerShell in
+the project folder and run `scripts\setup_phone_access.ps1`. It installs
+Tailscale if needed, signs the computer in (one browser window), publishes
+the server, and prints the address for the phone. Run it from a network that
+allows Tailscale; some school and office networks block it outright, and
+the script says so rather than guessing.
+
 **2. Reach it from the phone, with Tailscale.** Browsers refuse to open a
 microphone over plain `http`, and the server is deliberately not exposed to
 the network. [Tailscale](https://tailscale.com) solves both: install it on
@@ -540,6 +547,7 @@ scripts/
   lock_hashes.py     regenerates requirements-lock.txt from the PyPI API
   convert_mt_models.py  rebuilds the offline translation and grammar models for the "models" release
   web_server.bat     starts the phone front end (see "Use it from your phone")
+  setup_phone_access.ps1  installs Tailscale, signs in, and publishes the phone front end with HTTPS
 ```
 
 Both build scripts take a stage argument so CI can sign between building and
