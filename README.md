@@ -467,6 +467,11 @@ public, the server itself asks remote visitors to sign in:
   `scripts\install_web_service.ps1` installs a hidden log-on launcher that
   keeps both the tunnel and the server running (logs in
   `%LOCALAPPDATA%\SpeechToText`); `-Uninstall` removes it.
+- A second lock, optional: `scripts\cloudflare_access.ps1 -Hostname <your-host>
+  -Email <you>` puts a Cloudflare Access application in front of the
+  hostname, so a visitor must first pass Cloudflare's login (a one-time code
+  to that email) before anything reaches the tunnel. Needs a Cloudflare API
+  token; the script's header lists the three permissions.
 
 **What is different from the desktop app:** no global hotkeys and no mini
 pill (both are desktop ideas), no "Save transcript" (copy and paste
@@ -573,6 +578,7 @@ scripts/
   setup_phone_access.ps1  installs Tailscale, signs in, and publishes the phone front end with HTTPS
   web_service.ps1    keeps the phone front end and its Cloudflare tunnel running, restarting after a crash
   install_web_service.ps1  puts web_service.ps1 in the Startup folder and starts it (-Uninstall removes it)
+  cloudflare_access.ps1  adds the optional Cloudflare Access gate (email one-time code) in front of the hostname
 ```
 
 Both build scripts take a stage argument so CI can sign between building and
