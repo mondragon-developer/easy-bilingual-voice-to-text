@@ -5,6 +5,7 @@ the transcriber tests); here the question is whether the HTTP layer says the
 right things: loading, ready, bad input, the token, and a dictation's shape.
 """
 
+import base64
 import time
 from unittest.mock import MagicMock
 
@@ -16,6 +17,8 @@ from src.translator import Translation
 from webapp.server import MAX_UPLOAD_BYTES, create_app
 
 SPEECH = np.ones(16000, dtype=np.float32)
+LOCAL = ("127.0.0.1", 50000)
+REMOTE = ("203.0.113.9", 50000)
 
 
 def _transcriber(load_result="CPU (test)", error=None):
@@ -31,9 +34,11 @@ def _transcriber(load_result="CPU (test)", error=None):
 
 @pytest.fixture
 def client():
-    """A started app whose model has finished 'loading'."""
+    """A started app whose model has finished 'loading', used from the PC
+    itself (the test client's default peer address is not loopback, and
+    would count as remote)."""
     app = create_app(transcriber=_transcriber(), decode=lambda raw: SPEECH)
-    with TestClient(app) as client:
+    with TestClient(app, client=LOCAL) as client:
         _wait_ready(client)
         yield client
 
@@ -62,7 +67,7 @@ class TestStatus:
 
     def test_a_model_that_fails_to_load_is_reported_not_hidden(self):
         app = create_app(transcriber=_transcriber(error=RuntimeError("no DLL")))
-        with TestClient(app) as client:
+        with TestClient(app, client=LOCAL) as client:
             for _ in range(100):
                 info = client.get("/api/status").json()
                 if info["error"]:
@@ -80,7 +85,7 @@ class TestStatus:
 class TestDictate:
     def test_returns_both_languages_and_the_engine(self):
         app = create_app(transcriber=_transcriber(), decode=lambda raw: SPEECH)
-        with TestClient(app) as client:
+        with TestClient(app, client=LOCAL) as client:
             _wait_ready(client)
             res = _dictate(client, translate_mode="off")
         body = res.json()
@@ -96,7 +101,7 @@ class TestDictate:
     def test_a_short_clip_is_a_note(self):
         app = create_app(transcriber=_transcriber(),
                          decode=lambda raw: np.zeros(100, dtype=np.float32))
-        with TestClient(app) as client:
+        with TestClient(app, client=LOCAL) as client:
             _wait_ready(client)
             body = _dictate(client).json()
         assert body["text"] == "" and "too short" in body["note"]
@@ -105,7 +110,7 @@ class TestDictate:
         def bad(raw):
             raise ValueError("not audio")
         app = create_app(transcriber=_transcriber(), decode=bad)
-        with TestClient(app) as client:
+        with TestClient(app, client=LOCAL) as client:
             _wait_ready(client)
             res = _dictate(client)
         assert res.status_code == 400
@@ -119,7 +124,7 @@ class TestDictate:
         slow = _transcriber()
         slow.load.side_effect = lambda: time.sleep(0.5) or "CPU"
         app = create_app(transcriber=slow, decode=lambda raw: SPEECH)
-        with TestClient(app) as client:
+        with TestClient(app, client=LOCAL) as client:
             assert _dictate(client).status_code == 503
 
     def test_an_oversized_clip_is_refused(self, client):
@@ -129,20 +134,69 @@ class TestDictate:
         assert res.status_code == 413
 
 
-class TestToken:
-    def test_with_a_token_set_every_call_needs_it(self):
-        app = create_app(transcriber=_transcriber(), token="s3cret",
-                         decode=lambda raw: SPEECH)
-        with TestClient(app) as client:
-            assert client.get("/api/status").status_code == 401
+def _basic(user, password):
+    token = base64.b64encode(f"{user}:{password}".encode()).decode()
+    return {"Authorization": f"Basic {token}"}
+
+
+class TestRemoteGuard:
+    """Local use never signs in; remote use cannot happen without
+    credentials, and needs them once they exist."""
+
+    def _app(self, **remote):
+        return create_app(transcriber=_transcriber(), decode=lambda raw: SPEECH,
+                          **remote)
+
+    def test_local_use_never_signs_in_even_with_credentials_set(self):
+        app = self._app(remote_user="jmond", remote_password="pw")
+        with TestClient(app, client=LOCAL) as client:
+            assert client.get("/").status_code == 200
+            assert client.get("/api/status").status_code == 200
+
+    def test_remote_is_refused_outright_while_credentials_are_unset(self):
+        with TestClient(self._app(), client=REMOTE) as client:
+            res = client.get("/api/status")
+        assert res.status_code == 403
+        assert "WWW-Authenticate" not in res.headers
+
+    def test_remote_is_asked_to_sign_in(self):
+        app = self._app(remote_user="jmond", remote_password="pw")
+        with TestClient(app, client=REMOTE) as client:
+            res = client.get("/")
+            assert res.status_code == 401
+            assert res.headers["WWW-Authenticate"].startswith("Basic ")
             assert client.get("/api/status",
-                              headers={"X-Token": "wrong"}).status_code == 401
-            _wait_ready(client, headers={"X-Token": "s3cret"})
+                              headers=_basic("jmond", "wrong")).status_code == 401
+            assert client.get("/api/status",
+                              headers=_basic("other", "pw")).status_code == 401
+            assert client.get("/api/status",
+                              headers={"Authorization": "Bearer x"}).status_code == 401
+
+    def test_remote_with_the_right_credentials_gets_through(self):
+        app = self._app(remote_user="jmond", remote_password="pw")
+        with TestClient(app, client=REMOTE) as client:
+            auth = _basic("jmond", "pw")
+            _wait_ready(client, headers=auth)
             res = client.post("/api/dictate", data={"translate_mode": "off"},
                               files={"clip": ("clip", b"\x00", "audio/webm")},
-                              headers={"X-Token": "s3cret"})
-            assert res.status_code == 200
-            assert client.get("/").status_code == 200  # the page itself is public
+                              headers=auth)
+        assert res.status_code == 200
 
-    def test_without_a_token_nothing_is_asked(self, client):
-        assert client.get("/api/status").status_code == 200
+    def test_tunnel_traffic_from_loopback_counts_as_remote(self):
+        # cloudflared runs on this PC and connects from 127.0.0.1; the
+        # CF-Connecting-IP header is what says the request came from outside.
+        app = self._app(remote_user="jmond", remote_password="pw")
+        with TestClient(app, client=LOCAL) as client:
+            res = client.get("/api/status", headers={"CF-Connecting-IP": "1.2.3.4"})
+            assert res.status_code == 401
+            res = client.get("/api/status", headers={"CF-Connecting-IP": "1.2.3.4",
+                                                     **_basic("jmond", "pw")})
+            assert res.status_code == 200
+
+    def test_half_set_credentials_count_as_unset(self):
+        with TestClient(self._app(remote_user="jmond"), client=REMOTE) as client:
+            assert client.get("/api/status").status_code == 403
+
+    def test_the_status_says_whether_remote_access_is_on(self):
+        assert self._app().state.remote_enabled is False
+        assert self._app(remote_user="a", remote_password="b").state.remote_enabled is True

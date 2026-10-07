@@ -16,7 +16,7 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -24,6 +24,8 @@ from src import __version__
 from src.languages import LANG_NAMES
 from src.pipeline import Pipeline
 from src.settings import CHOICES
+
+from . import guard
 
 STATIC = Path(__file__).parent / "static"
 
@@ -63,16 +65,16 @@ class _Models:
         return self.pipeline is not None
 
 
-def create_app(transcriber=None, token=None, decode=_decode) -> FastAPI:
+def create_app(transcriber=None, remote_user="", remote_password="",
+               decode=_decode) -> FastAPI:
     """Build the application.
 
     Args:
         transcriber: Object with the ``Transcriber`` interface; the real one
             when omitted. A test hands in a fake and no model loads.
-        token: Optional shared secret. When set, every API call must carry
-            it in an ``X-Token`` header. Tailscale already limits who can
-            reach the server; this is a second lock for anyone who later
-            exposes it more widely.
+        remote_user: User name a remote browser must present (HTTP Basic).
+        remote_password: Its password. With either empty, every remote
+            request is refused; see ``guard``. Local use never signs in.
         decode: ``callable(bytes) -> numpy array`` turning an uploaded clip
             into 16 kHz samples; swapped out in tests.
     """
@@ -88,18 +90,14 @@ def create_app(transcriber=None, token=None, decode=_decode) -> FastAPI:
 
     app = FastAPI(title="Speech to Text", version=__version__,
                   lifespan=_lifespan)
-
-    def _check_token(given):
-        if token and given != token:
-            raise HTTPException(401, "wrong or missing token")
+    app.state.remote_enabled = guard.install(app, remote_user, remote_password)
 
     @app.get("/")
     def index():
         return FileResponse(STATIC / "index.html")
 
     @app.get("/api/status")
-    def status(x_token: str = Header(default=None)):
-        _check_token(x_token)
+    def status():
         return {
             "version": __version__,
             "ready": models.ready,
@@ -114,9 +112,7 @@ def create_app(transcriber=None, token=None, decode=_decode) -> FastAPI:
     @app.post("/api/dictate")
     async def dictate(clip: UploadFile = File(...),
                       translate_mode: str = Form("offline"),
-                      tidy_mode: str = Form("basic"),
-                      x_token: str = Header(default=None)):
-        _check_token(x_token)
+                      tidy_mode: str = Form("basic")):
         if not models.ready:
             raise HTTPException(503, models.error or "model still loading")
         if translate_mode not in CHOICES["translate_mode"]:

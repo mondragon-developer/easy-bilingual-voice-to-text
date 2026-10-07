@@ -414,8 +414,9 @@ python -m webapp            # or double-click scripts\web_server.bat
 ```
 
 It listens on `http://127.0.0.1:8765`, on this computer only, on purpose.
-Open that address in a browser here to try it. For always-on, point a Task
-Scheduler task "at log on" at `scripts\web_server.bat`.
+Open that address in a browser here to try it. For always-on, run
+`scripts\install_web_service.ps1` once: it starts the server hidden at every
+log on (and the Cloudflare tunnel below, if one is configured).
 
 **Shortcut for steps 2 and 3:** with the server running, open PowerShell in
 the project folder and run `scripts\setup_phone_access.ps1`. It installs
@@ -441,9 +442,31 @@ Tailscale prints the address, something like
 microphone, and use the browser's "Add to Home Screen" so it opens like an
 app. Settings (translation, tidy level, auto-copy) live on the phone.
 
-Do not use `tailscale funnel`, which makes the address public. If you ever
-need that, set `STT_WEB_TOKEN` on the computer first: every call then needs
-that token, and the page asks for it once.
+Do not use `tailscale funnel`, which makes the address public, unless the
+sign-in below is set up first.
+
+**Alternative: your own domain through a Cloudflare Tunnel.** For a network
+that blocks Tailscale, or if you already own a domain on Cloudflare. The
+PC opens no port; `cloudflared` dials out and Cloudflare forwards
+`https://<your-host>` down to `localhost:8765`. Because that address is
+public, the server itself asks remote visitors to sign in:
+
+- Put a user name and password in a `.env` file in the project folder
+  (`STT_REMOTE_USER=...`, `STT_REMOTE_PASSWORD=...`; the file is gitignored).
+  The browser asks for them once. **Local use on the PC never asks**, and
+  **with either value missing every remote request is refused** (403), so
+  an exposed server with no password set shows nothing.
+- A request counts as remote when it does not come from loopback or when it
+  carries Cloudflare's `CF-Connecting-IP` header, which is how tunnel
+  traffic arriving from the connector on the same PC is told apart from a
+  local browser.
+- Set up once: `cloudflared tunnel login`, `cloudflared tunnel create
+  speech-to-text`, `cloudflared tunnel route dns speech-to-text
+  <your-host>`, and a `%USERPROFILE%\.cloudflared\speech-to-text.yml` whose
+  one ingress rule maps that hostname to `http://localhost:8765`. Then
+  `scripts\install_web_service.ps1` installs a hidden log-on launcher that
+  keeps both the tunnel and the server running (logs in
+  `%LOCALAPPDATA%\SpeechToText`); `-Uninstall` removes it.
 
 **What is different from the desktop app:** no global hotkeys and no mini
 pill (both are desktop ideas), no "Save transcript" (copy and paste
@@ -520,7 +543,7 @@ without saying so, and would turn Spanish into English-shaped nonsense.
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest tests/        # 379 tests, one skipped off Windows; tests/test_app.py opens a real window
+python -m pytest tests/        # 384 tests, one skipped off Windows; tests/test_app.py opens a real window
 ```
 
 ```
@@ -539,8 +562,8 @@ src/
   hotkeys.py         global hotkeys, and the no-op stand-in off Windows
   pipeline.py        transcribe, tidy, correct, translate - the sequence without a window
   app.py             CustomTkinter two-pane UI, mini mode, recording flow
-webapp/              the phone front end: FastAPI server over pipeline.py, one static page (python -m webapp)
-tests/               pytest suite (379 tests across every module above except hotkeys.py)
+webapp/              the phone front end: FastAPI server over pipeline.py, the remote sign-in guard, one static page (python -m webapp)
+tests/               pytest suite (384 tests across every module above except hotkeys.py)
 scripts/
   build_release.ps1  Windows: PyInstaller -> the two release zips
   build_macos.sh     macOS: PyInstaller -> .app -> .dmg (unsigned)
@@ -548,6 +571,8 @@ scripts/
   convert_mt_models.py  rebuilds the offline translation and grammar models for the "models" release
   web_server.bat     starts the phone front end (see "Use it from your phone")
   setup_phone_access.ps1  installs Tailscale, signs in, and publishes the phone front end with HTTPS
+  web_service.ps1    keeps the phone front end and its Cloudflare tunnel running, restarting after a crash
+  install_web_service.ps1  puts web_service.ps1 in the Startup folder and starts it (-Uninstall removes it)
 ```
 
 Both build scripts take a stage argument so CI can sign between building and

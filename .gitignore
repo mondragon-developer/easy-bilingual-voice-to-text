@@ -26,3 +26,6 @@ MACOS_PLAN.md
 
 # Scratch venv for scripts/convert_mt_models.py (transformers + torch)
 convenv/
+
+# Remote sign-in for the phone front end; never committed
+.env

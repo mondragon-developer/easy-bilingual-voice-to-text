@@ -4,21 +4,18 @@
 // Settings live in localStorage on the phone, not on the server: the
 // server has no idea who is talking to it, and the desktop app keeps its
 // own file, so each front end remembers its own choices.
+//
+// Remote sign-in is HTTP Basic and the browser handles all of it: it asks
+// once when the page loads and sends the credentials with every fetch.
 
 "use strict";
 
 const $ = (id) => document.getElementById(id);
 const SETTINGS = ["translate_mode", "tidy_mode", "autocopy", "copy_english"];
-const TOKEN_KEY = "stt_token";
 
 let recorder = null;
 let chunks = [];
 let entryNo = 0;
-
-function headers() {
-  const token = localStorage.getItem(TOKEN_KEY);
-  return token ? { "X-Token": token } : {};
-}
 
 function setStatus(text) {
   $("status").textContent = text;
@@ -55,11 +52,11 @@ function syncEnglishCopy() {
 
 async function checkStatus() {
   try {
-    const res = await fetch("/api/status", { headers: headers() });
-    if (res.status === 401) {
-      const token = prompt("This server asks for a token:");
-      if (token) localStorage.setItem(TOKEN_KEY, token);
-      return checkStatus();
+    const res = await fetch("/api/status");
+    if (res.status === 401 || res.status === 403) {
+      setStatus(res.status === 401 ? "Sign-in required. Reload the page to sign in."
+                                   : "Remote access is off on the computer.");
+      return;
     }
     const info = await res.json();
     if (info.error) {
@@ -123,7 +120,7 @@ async function send(blob) {
   form.append("translate_mode", $("translate_mode").value);
   form.append("tidy_mode", $("tidy_mode").value);
   try {
-    const res = await fetch("/api/dictate", { method: "POST", body: form, headers: headers() });
+    const res = await fetch("/api/dictate", { method: "POST", body: form });
     if (!res.ok) {
       const detail = (await res.json().catch(() => ({}))).detail || res.statusText;
       setStatus("Failed: " + detail);
