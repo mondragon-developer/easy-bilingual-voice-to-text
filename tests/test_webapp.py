@@ -11,7 +11,11 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-from fastapi.testclient import TestClient
+
+# The web front end has its own requirements file; without it (CI installs
+# only the desktop app's) these tests are skipped rather than failed.
+pytest.importorskip("fastapi")
+from fastapi.testclient import TestClient  # noqa: E402
 
 from src.translator import Translation
 from webapp.server import MAX_UPLOAD_BYTES, create_app
