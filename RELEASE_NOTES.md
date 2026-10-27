@@ -1,3 +1,17 @@
+## Speech to Text v2.4.2 - auto-copy that keeps up
+
+**Fixed: on the computer itself, Auto-copy only worked the first time.** With the phone page open in a browser on the PC (http://localhost:8765), the first dictation landed on the clipboard, but the second and third did not: pasting kept giving the first one, while the page still said "copied".
+
+The cause is a browser rule: a page may only write the clipboard while it has the focus. The natural way to dictate is to click Stop and go straight to the window you want to paste into, so by the time the transcription came back the page no longer had the focus, the browser refused the copy, and the page did not notice.
+
+Now, when the page is opened on the computer itself, the server puts the text on the clipboard instead of the browser, and it does not care where the focus is. Every dictation is copied, accents and all.
+
+On a phone, or any other device, the copy still happens in that device's browser, because that is where you paste. If the browser refuses there, the page now says "not copied, use the Copy button" instead of pretending it worked. Only a page on the computer itself can set the computer's clipboard; a phone or the tunnel cannot.
+
+The desktop app is unchanged from v2.4.0.
+
+---
+
 ## Speech to Text v2.4.1 - the switch on the phone too
 
 **New in this release:** the phone front end's page has the same **Speech
