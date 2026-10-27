@@ -420,7 +420,9 @@ model without a restart: *Light* is `large-v3-turbo` stored as 8-bit numbers,
 about 1.4 GB on the card and still bilingual, and *CPU only* moves dictation to
 the main processor and leaves the card alone. The phone front end runs its own
 copy of the model in a separate program, so the switch tells that program too;
-otherwise half the memory would stay taken.
+otherwise half the memory would stay taken. The phone page has the switch
+as well, for when the desktop window is closed and only the phone's copy
+is on the card.
 
 **Is `small` a compromise?** For English, measurably not. On a test clip, the
 `small`, `medium` and largest models produced **byte-for-byte identical**

@@ -59,6 +59,7 @@ async function checkStatus() {
       return;
     }
     const info = await res.json();
+    showSpeechModel(info);
     if (info.error) {
       setStatus("Model failed to load: " + info.error);
       return;
@@ -75,6 +76,47 @@ async function checkStatus() {
     setStatus("Cannot reach the computer. Is the server running? " + err.message);
     setTimeout(checkStatus, 3000);
   }
+}
+
+// The speech model is the server's, not a phone setting, so it is never
+// saved here; the select just mirrors what the computer has loaded. A
+// failed load leaves it usable so another model can be tried.
+function showSpeechModel(info) {
+  const select = $("speech_model");
+  select.value = select.dataset.loaded = info.speech_model;
+  select.disabled = !info.can_switch || (!info.ready && !info.error);
+  select.title = info.can_switch ? "" : "Only the owner's account can switch the speech model.";
+}
+
+async function switchSpeechModel() {
+  const select = $("speech_model");
+  // Disabling Record mid-recording would leave no way to stop it.
+  if ((recorder && recorder.state === "recording") || $("record").disabled) {
+    select.value = select.dataset.loaded;
+    setStatus("Finish the current recording before switching the speech model.");
+    return;
+  }
+  const label = select.options[select.selectedIndex].text;
+  select.disabled = true;
+  $("record").disabled = true;
+  setStatus("Switching the computer's speech model to " + label + "…");
+  try {
+    const res = await fetch("/api/speech-model", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: select.value }),
+    });
+    if (res.ok) {
+      checkStatus();
+      return;
+    }
+    const detail = (await res.json().catch(() => ({}))).detail || res.statusText;
+    setStatus("Could not switch: " + detail);
+  } catch (err) {
+    setStatus("Could not switch: " + err.message);
+  }
+  // Leave the reason on screen a moment before the status poll replaces it.
+  setTimeout(checkStatus, 3000);
 }
 
 // Browsers differ in what they can record; pick the first container the
@@ -201,6 +243,7 @@ $("record").addEventListener("click", () => {
   else startRecording();
 });
 for (const key of SETTINGS) $(key).addEventListener("change", saveSettings);
+$("speech_model").addEventListener("change", switchSpeechModel);
 for (const btn of document.querySelectorAll("[data-copy]")) {
   btn.addEventListener("click", () => {
     if (copyText(stripStamps($("pane-" + btn.dataset.copy).value))) {

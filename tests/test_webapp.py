@@ -235,7 +235,8 @@ class TestRemoteGuard:
 
 class TestSpeechModelSwitch:
     """The desktop window's Best / Light / CPU only switch reaches the
-    server, so freeing the GPU frees it of both copies of Whisper."""
+    server, so freeing the GPU frees it of both copies of Whisper. The page
+    has the switch too, for the PC and the owner's account only."""
 
     def _app(self, transcriber=None, **kwargs):
         return create_app(transcriber=transcriber or _transcriber(),
@@ -269,7 +270,8 @@ class TestSpeechModelSwitch:
             _wait_ready(client)
             info = client.get("/api/status").json()
         assert info["speech_model"] == "cpu"
-        assert [c.args for c in fake.load.call_args_list] ==             [("best",), ("cpu",)]
+        assert [c.args for c in fake.load.call_args_list] == \
+            [("best",), ("cpu",)]
 
     def test_the_grammar_pipeline_survives_a_switch(self):
         app = self._app()
@@ -320,18 +322,45 @@ class TestSpeechModelSwitch:
         res = client.post("/api/speech-model", data={"mode": "cpu"})
         assert res.status_code == 422
 
-    def test_a_signed_in_phone_cannot_switch(self):
-        app = self._app(remote_user="jmond", remote_password="pw")
+    def test_the_owner_can_switch_from_a_phone(self):
+        fake = _transcriber()
+        app = self._app(fake, remote_user="jmond", remote_password="pw",
+                        remote_users="guest:welcome")
+        auth = _basic("jmond", "pw")
+        with TestClient(app, client=REMOTE) as client:
+            _wait_ready(client, headers=auth)
+            assert client.get("/api/status", headers=auth).json()["can_switch"] is True
+            assert self._switch(client, "light", headers=auth).status_code == 202
+            _wait_ready(client, headers=auth)
+        assert fake.load.call_args.args == ("light",)
+
+    def test_a_guest_cannot_switch(self):
+        fake = _transcriber()
+        app = self._app(fake, remote_user="jmond", remote_password="pw",
+                        remote_users="guest:welcome")
+        auth = _basic("guest", "welcome")
+        with TestClient(app, client=REMOTE) as client:
+            _wait_ready(client, headers=auth)
+            assert client.get("/api/status", headers=auth).json()["can_switch"] is False
+            assert self._switch(client, "cpu", headers=auth).status_code == 403
+        fake.load.assert_called_once_with("best")
+
+    def test_a_guest_through_the_tunnel_cannot_switch_either(self):
+        app = self._app(remote_user="jmond", remote_password="pw",
+                        remote_users="guest:welcome")
+        with TestClient(app, client=LOCAL) as client:
+            res = self._switch(client, "cpu", headers={
+                "CF-Connecting-IP": "1.2.3.4", **_basic("guest", "welcome")})
+        assert res.status_code == 403
+
+    def test_with_no_main_account_nobody_remote_can_switch(self):
+        app = self._app(remote_users="jmond:pw")
         with TestClient(app, client=REMOTE) as client:
             res = self._switch(client, "cpu", headers=_basic("jmond", "pw"))
         assert res.status_code == 403
 
-    def test_tunnel_traffic_cannot_switch_either(self):
-        app = self._app(remote_user="jmond", remote_password="pw")
-        with TestClient(app, client=LOCAL) as client:
-            res = self._switch(client, "cpu", headers={
-                "CF-Connecting-IP": "1.2.3.4", **_basic("jmond", "pw")})
-        assert res.status_code == 403
+    def test_the_pc_itself_can_always_switch(self, client):
+        assert client.get("/api/status").json()["can_switch"] is True
 
     def test_a_dictation_caught_by_a_switch_is_a_503(self):
         fake = _transcriber()

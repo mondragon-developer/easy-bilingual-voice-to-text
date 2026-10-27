@@ -369,7 +369,7 @@ long for exactly the same words. See the measurements in
 | Auto-copy after dictation | Checkbox in the bottom bar (on by default) |
 | Always paste in English | Tick **Always copy English** (off by default; needs Translate on) |
 | Tidy what you said | **Tidy speech: Off / Rules / Rules + grammar** in the bottom bar. *Rules* (default): stuttered words and phrases said once, fillers removed, and the English slips with one right answer corrected ("you was", "he don't", "a apple", "more better"). *Rules + grammar*: the same, then an offline grammar model for English (about 710 MB, downloaded once on first use; adds under a second per recording on CPU). *Off*: every word as spoken |
-| Free the GPU for something else | **Speech model: Best / Light / CPU only** in the bottom bar, no restart. *Best* (default): `large-v3` on the GPU, about 4.2 GB of video memory. *Light*: `large-v3-turbo` in int8 on the GPU, about 1.4 GB, still bilingual (1.5 GB download on first use). *CPU only*: `small` on the processor, slower, and the GPU is left alone. The phone front end's server, if running, switches with it |
+| Free the GPU for something else | **Speech model: Best / Light / CPU only** in the bottom bar, no restart. *Best* (default): `large-v3` on the GPU, about 4.2 GB of video memory. *Light*: `large-v3-turbo` in int8 on the GPU, about 1.4 GB, still bilingual (1.5 GB download on first use). *CPU only*: `small` on the processor, slower, and the GPU is left alone. The phone front end's server, if running, switches with it; its page has the same switch, which changes only the server's copy |
 | Keep your choices | Automatic - they are saved as you change them |
 | Translation mode | **Translate: Off / Offline / Online** in the bottom bar. *Offline* (default) translates on your computer; *Online* asks Google first and falls back to MyMemory, then to the offline model; *Off* translates nothing |
 
@@ -442,6 +442,10 @@ Tailscale prints the address, something like
 `https://mondra-dev.tail1234.ts.net`. Open it on the phone, allow the
 microphone, and use the browser's "Add to Home Screen" so it opens like an
 app. Settings (translation, tidy level, auto-copy) live on the phone.
+The page's **Speech model** select switches the computer's copy of the
+model, the same choices as the desktop switch; remotely only the main
+account (`STT_REMOTE_USER`) may use it, so a guest can dictate but not
+change what the PC runs.
 
 Do not use `tailscale funnel`, which makes the address public, unless the
 sign-in below is set up first.

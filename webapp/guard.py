@@ -80,28 +80,28 @@ def parse_users(user="", password="", extra="") -> dict:
     return users
 
 
-def credentials_match(authorization, users) -> bool:
-    """Whether an ``Authorization`` header carries one of ``users``.
+def signed_in_user(authorization, users):
+    """The account an ``Authorization`` header signs in as, or ``None``.
 
     Both halves are compared in constant time, an unknown user is compared
     against a dummy so the timing does not say which names exist, and a
     header that is not well-formed Basic auth is simply a mismatch.
     """
     if not authorization or not users:
-        return False
+        return None
     scheme, _, encoded = authorization.partition(" ")
     if scheme.lower() != "basic" or not encoded:
-        return False
+        return None
     try:
         decoded = base64.b64decode(encoded.strip(), validate=True).decode("utf-8")
     except (ValueError, UnicodeDecodeError):
-        return False
+        return None
     given_user, _, given_password = decoded.partition(":")
     expected = users.get(given_user)
     user_ok = expected is not None
     password_ok = hmac.compare_digest(given_password.encode(),
                                       (expected or "\x00").encode())
-    return user_ok and password_ok
+    return given_user if user_ok and password_ok else None
 
 
 def install(app, user="", password="", extra=""):
@@ -117,15 +117,20 @@ def install(app, user="", password="", extra=""):
     users = parse_users(user, password, extra)
     enabled = bool(users)
 
+    # Routes read ``request.state.remote_user``: None on this PC, otherwise
+    # the account the request signed in as.
     @app.middleware("http")
     async def _guard(request: Request, call_next):
+        request.state.remote_user = None
         host = request.client.host if request.client else None
         if not is_remote(host, request.headers):
             return await call_next(request)
         if not enabled:
             return PlainTextResponse(
                 "Remote access is off on this server.", status_code=403)
-        if credentials_match(request.headers.get("authorization"), users):
+        name = signed_in_user(request.headers.get("authorization"), users)
+        if name is not None:
+            request.state.remote_user = name
             return await call_next(request)
         return PlainTextResponse(
             "Sign in to use this server.", status_code=401,

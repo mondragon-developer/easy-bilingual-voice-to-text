@@ -4,7 +4,8 @@
 background thread the moment the app starts, exactly as the desktop window
 does, so the page opens at once and says "loading" until the model is in.
 The desktop window's speech-model switch reaches this server too (see
-``src.webpeer``), so a lighter model there means a lighter one here.
+``src.webpeer``), so a lighter model there means a lighter one here. The
+page has the same switch; it changes this server's copy only.
 
 The one piece of real work here is turning what a browser records into the
 samples Whisper wants. Phones hand over webm/opus (Android, desktop Chrome)
@@ -152,8 +153,19 @@ def create_app(transcriber=None, remote_user="", remote_password="",
     def index():
         return FileResponse(STATIC / "index.html")
 
+    # Only the main account may take the GPU back remotely; a guest can
+    # dictate but not change what the PC runs. No main account, no remote
+    # switching at all.
+    owner = remote_user if remote_user and remote_password else None
+
+    def may_switch(request):
+        host = request.client.host if request.client else None
+        if not guard.is_remote(host, request.headers):
+            return True
+        return owner is not None and request.state.remote_user == owner
+
     @app.get("/api/status")
-    def status():
+    def status(request: Request):
         return {
             "version": __version__,
             "ready": models.ready,
@@ -165,18 +177,16 @@ def create_app(transcriber=None, remote_user="", remote_password="",
             "translate_modes": CHOICES["translate_mode"],
             "tidy_modes": CHOICES["tidy_mode"],
             "speech_models": CHOICES["speech_model"],
+            "can_switch": may_switch(request),
         }
 
     @app.post("/api/speech-model", status_code=202)
     def speech_model_switch(choice: _SpeechModel, request: Request):
-        # What sits on the PC's GPU is the PC's business: a signed-in phone
-        # may dictate, but not take the GPU back from whoever is at the
-        # desk. The JSON body is a CSRF guard as well - a web page cannot
-        # send one cross-origin without a preflight this server never
-        # answers.
-        host = request.client.host if request.client else None
-        if guard.is_remote(host, request.headers):
-            raise HTTPException(403, "the speech model is switched on the PC")
+        # The JSON body is a CSRF guard: a web page cannot send one
+        # cross-origin without a preflight this server never answers.
+        if not may_switch(request):
+            raise HTTPException(
+                403, "only the owner's account can switch the speech model")
         if choice.mode not in CHOICES["speech_model"]:
             raise HTTPException(422, f"unknown speech model {choice.mode!r}")
         models.switch(choice.mode)
