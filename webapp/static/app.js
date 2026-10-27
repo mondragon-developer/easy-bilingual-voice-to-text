@@ -124,6 +124,9 @@ async function send(blob) {
     if (!res.ok) {
       const detail = (await res.json().catch(() => ({}))).detail || res.statusText;
       setStatus("Failed: " + detail);
+      // 503 is a model loading or being swapped from the desktop window;
+      // the status poll says when it is back and refreshes the footer.
+      if (res.status === 503) setTimeout(checkStatus, 1500);
       return;
     }
     show(await res.json());

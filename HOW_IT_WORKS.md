@@ -413,6 +413,15 @@ downloads a model *before* it checks whether the graphics card will work, so
 merely asking would pull nearly 3 GB and then throw it away. Skipping the
 question saves every Mac user that download.
 
+**Giving the graphics card back.** The default on an NVIDIA card holds about
+4 GB of its memory for as long as the app is open. When something else needs
+the card for a while, the **Speech model** switch in the bottom bar swaps the
+model without a restart: *Light* is `large-v3-turbo` stored as 8-bit numbers,
+about 1.4 GB on the card and still bilingual, and *CPU only* moves dictation to
+the main processor and leaves the card alone. The phone front end runs its own
+copy of the model in a separate program, so the switch tells that program too;
+otherwise half the memory would stay taken.
+
 **Is `small` a compromise?** For English, measurably not. On a test clip, the
 `small`, `medium` and largest models produced **byte-for-byte identical**
 English text - the small one just did it three times faster. For Spanish there
@@ -427,7 +436,7 @@ Yes, and in three independent ways - none of which requires rebuilding the app:
 
 1. **Pick a different model** with the `STT_MODEL` setting. Nothing is
    recompiled; the new model downloads itself the first time.
-2. **Change the built-in default** by editing two lines in
+2. **Change the built-in default** by editing the `MODES` table in
    `src/transcriber.py`.
 3. **Upgrade the engine** by bumping `faster-whisper` in the requirements file.
    An automated service already checks weekly for updates.

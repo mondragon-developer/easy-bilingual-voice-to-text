@@ -9,6 +9,8 @@ import json
 import re
 import subprocess
 import sys
+import threading
+import time
 import tkinter as tk
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -17,8 +19,9 @@ import customtkinter as ctk
 import numpy as np
 import pytest
 
-from src.app import (LANG_NAMES, MINI_BG, MODE_LABELS, TIDY_LABELS,
-                     TIDY_MODES, MiniWidget, SpeechToTextApp)
+from src.app import (LANG_NAMES, MINI_BG, MODE_LABELS, SPEECH_LABELS,
+                     SPEECH_MODELS, TIDY_LABELS, TIDY_MODES, MiniWidget,
+                     SpeechToTextApp)
 from src.hotkeys import NullHotkeyManager
 from src.settings import Settings
 from src.translator import Translation, TranslationError
@@ -43,9 +46,11 @@ def _shared_app(tmp_path_factory):
     fake.gpu_error = None
     fake.model_name = "large-v3"
     settings = Settings(tmp_path_factory.mktemp("settings") / "settings.json")
+    # The web peer is faked as well: the real one would switch the model of
+    # whatever server is running on this PC.
     application = SpeechToTextApp(transcriber=fake,
                                   hotkeys=NullHotkeyManager(),
-                                  settings=settings)
+                                  settings=settings, web_peer=MagicMock())
     # Let the model-load thread finish and its after() callbacks run.
     for _ in range(50):
         application.update()
@@ -566,6 +571,104 @@ class TestTidySpeech:
         finally:
             app.settings = original
             app.tidy_var.set(TIDY_LABELS["basic"])
+
+
+class TestSpeechModelSwitch:
+    """Best / Light / CPU only: a Whisper swap with no restart, for when the
+    GPU is wanted for something else."""
+
+    @staticmethod
+    def _settle(app):
+        for _ in range(200):
+            app.update()
+            if app.model_ready:
+                return
+            time.sleep(0.01)
+        raise AssertionError("the model never came back")
+
+    def _switch(self, app, mode):
+        app.speech_var.set(SPEECH_LABELS[mode])
+        app._on_speech_model_changed()
+        self._settle(app)
+
+    @pytest.fixture
+    def switching(self, app, tmp_path):
+        """The app with a scratch settings file and fresh call records,
+        put back on Best afterwards."""
+        original = app.settings
+        app.settings = Settings(tmp_path / "s.json")
+        app.transcriber.load.reset_mock()
+        app.web_peer.reset_mock()
+        try:
+            yield app
+        finally:
+            app.transcriber.load.side_effect = None
+            app._processing = False
+            if app.speech_model() != "best" or not app.model_ready:
+                self._settle(app)
+                self._switch(app, "best")
+            app.settings = original
+
+    def test_offers_the_three_models(self, app):
+        assert app.speech_btn.cget("values") ==             [SPEECH_LABELS[m] for m in SPEECH_MODELS]
+
+    def test_starts_on_best_and_enabled(self, app):
+        assert app.speech_model() == "best"
+        assert app.speech_btn.cget("state") == "normal"
+
+    def test_a_switch_loads_the_model_and_tells_the_web_server(self, switching):
+        self._switch(switching, "light")
+        switching.transcriber.load.assert_called_once_with("light")
+        for _ in range(50):
+            if switching.web_peer.called:
+                break
+            time.sleep(0.01)
+        switching.web_peer.assert_called_once_with("light")
+        assert switching.settings.load()["speech_model"] == "light"
+        assert switching.record_btn.cget("state") == "normal"
+
+    def test_choosing_the_model_in_use_does_nothing(self, switching):
+        switching._on_speech_model_changed()
+        switching.transcriber.load.assert_not_called()
+
+    def test_recording_is_off_while_the_model_is_swapped(self, switching):
+        release = threading.Event()
+        switching.transcriber.load.side_effect =             lambda mode: release.wait(5) and "CPU (test)"
+        switching.speech_var.set(SPEECH_LABELS["cpu"])
+        switching._on_speech_model_changed()
+        switching.update()
+        try:
+            assert switching.model_ready is False
+            assert switching.record_btn.cget("state") == "disabled"
+            assert switching.speech_btn.cget("state") == "disabled"
+            switching.toggle_recording()
+            assert not switching.recorder.is_recording
+        finally:
+            release.set()
+        self._settle(switching)
+        assert switching.speech_model() == "cpu"
+
+    def test_refused_mid_transcription(self, switching):
+        switching._processing = True
+        switching.speech_var.set(SPEECH_LABELS["light"])
+        switching._on_speech_model_changed()
+        assert switching.speech_model() == "best"
+        switching.transcriber.load.assert_not_called()
+        assert "Finish the current recording" in             switching.status_lbl.cget("text")
+
+    def test_a_failed_switch_goes_back_to_the_previous_model(self, switching):
+        def load(mode):
+            if mode == "light":
+                raise OSError("download interrupted")
+            return "GPU (test)"
+        switching.transcriber.load.side_effect = load
+        self._switch(switching, "light")
+        assert switching.speech_model() == "best"
+        assert [c.args for c in switching.transcriber.load.call_args_list]             == [("light",), ("best",)]
+        status = switching.status_lbl.cget("text")
+        assert "Could not switch to Light" in status
+        assert "download interrupted" in status
+        assert switching.settings.load()["speech_model"] == "best"
 
 
 class TestEnglishClipCheckbox:

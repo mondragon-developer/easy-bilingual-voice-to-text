@@ -3,6 +3,8 @@
 ``create_app`` builds the FastAPI application. The Whisper model loads on a
 background thread the moment the app starts, exactly as the desktop window
 does, so the page opens at once and says "loading" until the model is in.
+The desktop window's speech-model switch reaches this server too (see
+``src.webpeer``), so a lighter model there means a lighter one here.
 
 The one piece of real work here is turning what a browser records into the
 samples Whisper wants. Phones hand over webm/opus (Android, desktop Chrome)
@@ -16,14 +18,16 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from src import __version__
 from src.languages import LANG_NAMES
 from src.pipeline import Pipeline
 from src.settings import CHOICES
+from src.transcriber import ModelNotLoaded
 
 from . import guard
 
@@ -40,33 +44,79 @@ def _decode(clip: bytes):
 
 
 class _Models:
-    """Loads the transcriber once, off the request thread."""
+    """Loads the transcriber off the request thread, and reloads it on a
+    speech-model switch.
 
-    def __init__(self, transcriber):
+    One worker does all the loading. A switch that arrives while it is busy
+    only changes ``mode``; the worker sees the change when its current load
+    ends and loads again, so two quick switches cannot finish in the wrong
+    order and leave the older choice loaded.
+    """
+
+    def __init__(self, transcriber, mode):
         self._transcriber = transcriber
+        self.mode = mode
         self.device = None
         self.error = None
         self.pipeline = None
+        self._loaded = False
+        self._lock = threading.Lock()
         self._thread = None
 
     def start(self):
-        self._thread = threading.Thread(target=self._load, daemon=True)
-        self._thread.start()
+        with self._lock:
+            self._start_worker()
+
+    def switch(self, mode):
+        with self._lock:
+            if mode == self.mode and (self._loaded or self._thread):
+                return
+            self.mode = mode
+            self._loaded = False
+            self.device = None
+            self.error = None
+            self._start_worker()
+
+    def _start_worker(self):
+        if self._thread is None:
+            self._thread = threading.Thread(target=self._load, daemon=True)
+            self._thread.start()
 
     def _load(self):
-        try:
-            self.device = self._transcriber.load()
-            self.pipeline = Pipeline(self._transcriber)
-        except Exception as exc:  # noqa: BLE001 - shown on the status call
-            self.error = f"{type(exc).__name__}: {exc}"
+        while True:
+            wanted = self.mode
+            device, error = None, None
+            try:
+                device = self._transcriber.load(wanted)
+            except Exception as exc:  # noqa: BLE001 - shown on the status call
+                error = f"{type(exc).__name__}: {exc}"
+            with self._lock:
+                if self.mode != wanted:
+                    continue
+                self._thread = None
+                if error is not None:
+                    self.error = error
+                    return
+                # Built once: the pipeline holds the grammar model, which
+                # has nothing to do with Whisper and should survive a swap.
+                if self.pipeline is None:
+                    self.pipeline = Pipeline(self._transcriber)
+                self.device = device
+                self._loaded = True
+                return
 
     @property
     def ready(self) -> bool:
-        return self.pipeline is not None
+        return self._loaded
+
+
+class _SpeechModel(BaseModel):
+    mode: str
 
 
 def create_app(transcriber=None, remote_user="", remote_password="",
-               remote_users="", decode=_decode) -> FastAPI:
+               remote_users="", decode=_decode,
+               speech_model="best") -> FastAPI:
     """Build the application.
 
     Args:
@@ -79,11 +129,14 @@ def create_app(transcriber=None, remote_user="", remote_password="",
             refused; see ``guard``. Local use never signs in.
         decode: ``callable(bytes) -> numpy array`` turning an uploaded clip
             into 16 kHz samples; swapped out in tests.
+        speech_model: The ``transcriber.MODES`` key to load at start.
     """
     if transcriber is None:
         from src.transcriber import Transcriber
         transcriber = Transcriber()
-    models = _Models(transcriber)
+    if speech_model not in CHOICES["speech_model"]:
+        speech_model = "best"
+    models = _Models(transcriber, speech_model)
 
     @asynccontextmanager
     async def _lifespan(_app):
@@ -106,11 +159,28 @@ def create_app(transcriber=None, remote_user="", remote_password="",
             "ready": models.ready,
             "device": models.device,
             "model": getattr(transcriber, "model_name", None),
+            "speech_model": models.mode,
             "error": models.error,
             "languages": LANG_NAMES,
             "translate_modes": CHOICES["translate_mode"],
             "tidy_modes": CHOICES["tidy_mode"],
+            "speech_models": CHOICES["speech_model"],
         }
+
+    @app.post("/api/speech-model", status_code=202)
+    def speech_model_switch(choice: _SpeechModel, request: Request):
+        # What sits on the PC's GPU is the PC's business: a signed-in phone
+        # may dictate, but not take the GPU back from whoever is at the
+        # desk. The JSON body is a CSRF guard as well - a web page cannot
+        # send one cross-origin without a preflight this server never
+        # answers.
+        host = request.client.host if request.client else None
+        if guard.is_remote(host, request.headers):
+            raise HTTPException(403, "the speech model is switched on the PC")
+        if choice.mode not in CHOICES["speech_model"]:
+            raise HTTPException(422, f"unknown speech model {choice.mode!r}")
+        models.switch(choice.mode)
+        return {"speech_model": models.mode, "ready": models.ready}
 
     @app.post("/api/dictate")
     async def dictate(clip: UploadFile = File(...),
@@ -118,6 +188,9 @@ def create_app(transcriber=None, remote_user="", remote_password="",
                       tidy_mode: str = Form("basic")):
         if not models.ready:
             raise HTTPException(503, models.error or "model still loading")
+        # The model can go between that check and the transcription when a
+        # switch lands in the gap; the transcriber then refuses rather
+        # than crash, and that is a 503 too.
         if translate_mode not in CHOICES["translate_mode"]:
             raise HTTPException(422, f"unknown translate_mode {translate_mode!r}")
         if tidy_mode not in CHOICES["tidy_mode"]:
@@ -131,8 +204,11 @@ def create_app(transcriber=None, remote_user="", remote_password="",
             raise HTTPException(400, f"could not decode the recording: {exc}")
         if audio.size < 16000 * 0.3:
             return {"text": "", "note": "Recording was too short."}
-        result = models.pipeline.run(audio, translate_mode=translate_mode,
-                                     tidy_mode=tidy_mode)
+        try:
+            result = models.pipeline.run(audio, translate_mode=translate_mode,
+                                         tidy_mode=tidy_mode)
+        except ModelNotLoaded as exc:
+            raise HTTPException(503, "the speech model is switching") from exc
         if not result.text:
             return {"text": "", "note": "No speech detected."}
         return {

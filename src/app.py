@@ -8,7 +8,9 @@ Layout
     | (editable textbox)       | (editable textbox)        |
     | [Copy] [Clear]           | [Copy] [Clear]            |
     +--------------------------+---------------------------+
-    [ Save transcript ]                       model / device
+    [ Save transcript ]  Auto-copy  Translate: [Off|Offline|Online] ...
+    Tidy speech: [Off|Rules|Rules + grammar]  Speech model: [Best|Light|CPU only]
+                                                          model / device
 
 Every recording appends: the spoken text goes to its language's pane and the
 translation to the other, so each pane always holds the full transcript in
@@ -26,6 +28,11 @@ level meter) docked at the screen edge; the global hotkeys Ctrl+Alt+R
 (record/stop) and Ctrl+Alt+M (mini/restore) work system-wide, so you can
 dictate into any application: hotkey -> speak -> hotkey -> paste (the spoken
 text is auto-copied to the clipboard when Auto-copy is on).
+
+The speech-model switch trades accuracy for GPU memory without a restart:
+Best is large-v3 on the GPU, Light is large-v3-turbo in int8 for when the
+GPU is wanted elsewhere, and CPU only gives it back entirely. The phone front
+end's server, when one is running, is told to follow.
 """
 
 import sys
@@ -50,6 +57,7 @@ from .transcriber import Transcriber
 from .transcript import TranscriptLog
 from .translator import (MODES, TranslationError, describe_failure,
                          translate)
+from .webpeer import tell_speech_model
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
@@ -74,6 +82,11 @@ MODE_LABELS = {"off": "Off", "offline": "Offline", "online": "Online"}
 #: model in ``grammar`` for English.
 TIDY_MODES = ("off", "basic", "full")
 TIDY_LABELS = {"off": "Off", "basic": "Rules", "full": "Rules + grammar"}
+
+#: Speech-model settings values in the order the UI shows them, with their
+#: labels. What each one loads is ``transcriber.MODES``.
+SPEECH_MODELS = ("best", "light", "cpu")
+SPEECH_LABELS = {"best": "Best", "light": "Light", "cpu": "CPU only"}
 
 
 def _asset_path(name: str) -> str:
@@ -107,7 +120,7 @@ class SpeechToTextApp(ctk.CTk):
     """
 
     def __init__(self, recorder=None, transcriber=None, translator=None,
-                 hotkeys=None, settings=None, grammar=None):
+                 hotkeys=None, settings=None, grammar=None, web_peer=None):
         """
         Collaborators are injected with working defaults, so the app is still
         ``SpeechToTextApp()`` in ``main.py`` while a test can hand it a fake
@@ -123,6 +136,9 @@ class SpeechToTextApp(ctk.CTk):
                 the checkboxes between launches.
             grammar: Object with the ``LocalGrammar`` interface, used only
                 when Tidy speech is set to "Rules + grammar".
+            web_peer: Callable ``(mode)`` passing a speech-model switch on
+                to the web server; ``webpeer.tell_speech_model`` by default.
+                Tests hand in a fake so they never reach a real server.
         """
         super().__init__()
         self.title(f"Speech to Text v{__version__} - EN / ES")
@@ -153,6 +169,11 @@ class SpeechToTextApp(ctk.CTk):
         self.english_clip_var = tk.BooleanVar(
             value=saved["always_copy_english"])
         self.tidy_var = tk.StringVar(value=TIDY_LABELS[saved["tidy_mode"]])
+        self.speech_var = tk.StringVar(
+            value=SPEECH_LABELS[saved["speech_model"]])
+        self._speech_model_loaded = None   # the SPEECH_MODELS key in use
+        self.web_peer = (web_peer if web_peer is not None
+                         else tell_speech_model)
         self._dispatch = UiDispatcher(self, on_error=self._on_ui_error)
 
         self._build_ui()
@@ -168,7 +189,8 @@ class SpeechToTextApp(ctk.CTk):
 
         # Load the Whisper model on a worker thread so the window opens instantly.
         self._set_status("Loading Whisper model… (first run downloads it, one time)")
-        threading.Thread(target=self._load_model, daemon=True).start()
+        threading.Thread(target=self._load_model,
+                         args=(saved["speech_model"],), daemon=True).start()
 
     # ------------------------------------------------------------------ UI
 
@@ -303,7 +325,7 @@ class SpeechToTextApp(ctk.CTk):
         # In a frame of their own, so the label and the switch sit together
         # instead of stretching across the columns row 0 laid out.
         tidy_row = ctk.CTkFrame(bottom, fg_color="transparent")
-        tidy_row.grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        tidy_row.grid(row=1, column=0, columnspan=6, sticky="w", pady=(6, 0))
         ctk.CTkLabel(tidy_row, text="Tidy speech:", font=UI_FONT
                      ).grid(row=0, column=0, sticky="w")
         self.tidy_btn = ctk.CTkSegmentedButton(
@@ -311,13 +333,22 @@ class SpeechToTextApp(ctk.CTk):
             variable=self.tidy_var, font=UI_FONT, height=28,
             command=self._save_settings)
         self.tidy_btn.grid(row=0, column=1, sticky="w", padx=(8, 0))
+        # Disabled until a model is in: switching while one is still loading
+        # would queue a second load behind the first.
+        ctk.CTkLabel(tidy_row, text="Speech model:", font=UI_FONT
+                     ).grid(row=0, column=2, sticky="w", padx=(24, 0))
+        self.speech_btn = ctk.CTkSegmentedButton(
+            tidy_row, values=[SPEECH_LABELS[m] for m in SPEECH_MODELS],
+            variable=self.speech_var, font=UI_FONT, height=28,
+            state="disabled", command=self._on_speech_model_changed)
+        self.speech_btn.grid(row=0, column=3, sticky="w", padx=(8, 0))
         # Its own row: hotkey hint + model + device runs long, and a Tk label
-        # does not clip to its cell - sharing row 0 let it draw over the
-        # Translate checkbox once the text outgrew the window width.
+        # does not clip to its cell - sharing a row with the switches let it
+        # draw over them once the text outgrew the window width.
         self.device_lbl = ctk.CTkLabel(bottom, text="", font=("Segoe UI", 12),
                                        text_color="#9ca3af", anchor="e")
-        self.device_lbl.grid(row=1, column=3, columnspan=3, sticky="e",
-                             pady=(6, 0))
+        self.device_lbl.grid(row=2, column=0, columnspan=6, sticky="e",
+                             pady=(4, 0))
 
     def _attach_editing_helpers(self, box):
         """Add a right-click Cut/Copy/Paste menu and Ctrl+A to a textbox.
@@ -405,6 +436,7 @@ class SpeechToTextApp(ctk.CTk):
             "translate_mode": self.translate_mode(),
             "always_copy_english": self.english_clip_var.get(),
             "tidy_mode": self.tidy_mode(),
+            "speech_model": self.speech_model(),
         })
 
     def translate_mode(self) -> str:
@@ -418,6 +450,46 @@ class SpeechToTextApp(ctk.CTk):
         label = self.tidy_var.get()
         return next(mode for mode, shown in TIDY_LABELS.items()
                     if shown == label)
+
+    def speech_model(self) -> str:
+        """The selected speech model as a settings value, e.g. ``"light"``."""
+        label = self.speech_var.get()
+        return next(mode for mode, shown in SPEECH_LABELS.items()
+                    if shown == label)
+
+    def _on_speech_model_changed(self, _label=None):
+        """The speech model was switched: swap Whisper, tell the web server,
+        remember.
+
+        Refused while a recording is open or being transcribed, since the
+        swap would take the model away from it; the switch then goes back to
+        the model in use, so it never shows one that is not loaded.
+        """
+        wanted = self.speech_model()
+        current = self._speech_model_loaded
+        if wanted == current:
+            return
+        if (not self.model_ready or self.recorder.is_recording
+                or self._processing):
+            if current is not None:
+                self.speech_var.set(SPEECH_LABELS[current])
+            self._set_status("Finish the current recording before "
+                             "switching the speech model.")
+            return
+        # Same order as at start-up: model_ready drops here, on the main
+        # loop, so no hotkey can start a recording on a model being freed.
+        self.model_ready = False
+        self.record_btn.configure(state="disabled")
+        self.speech_btn.configure(state="disabled")
+        self._set_app_state("disabled")
+        self._set_status(
+            f"Switching the speech model to {SPEECH_LABELS[wanted]}… "
+            "(first use downloads it, one time)")
+        self._save_settings()
+        threading.Thread(target=self._load_model, args=(wanted, current),
+                         daemon=True).start()
+        threading.Thread(target=self.web_peer, args=(wanted,),
+                         daemon=True).start()
 
     def _on_translate_mode_changed(self, _label=None):
         """The translation mode was switched: restyle, then remember."""
@@ -482,25 +554,50 @@ class SpeechToTextApp(ctk.CTk):
 
     # ------------------------------------------------------- model loading
 
-    def _load_model(self):
-        """Worker thread: load Whisper, then enable recording via the UI."""
+    def _load_model(self, mode="best", previous=None):
+        """Worker thread: load Whisper, then enable recording via the UI.
+
+        Args:
+            mode: The ``SPEECH_MODELS`` key to load.
+            previous: On a switch, the model that was in use, reloaded if
+                ``mode`` cannot be: a failed switch should cost the switch,
+                not the app.
+        """
         try:
-            device = self.transcriber.load()
+            device = self.transcriber.load(mode)
         except Exception as exc:  # e.g. model download interrupted
-            self._ui(self._set_status, f"Model failed to load: {exc}")
+            if previous is None:
+                self._ui(self._set_status, f"Model failed to load: {exc}")
+                return
+            try:
+                device = self.transcriber.load(previous)
+            except Exception as again:  # noqa: BLE001 - shown on screen
+                self._ui(self._set_status, f"Model failed to load: {again}")
+                return
+            self._ui(self._on_model_ready, device, previous,
+                     f"Could not switch to {SPEECH_LABELS[mode]} ({exc}) - "
+                     f"still on {SPEECH_LABELS[previous]}.")
             return
         # model_ready is set by _on_model_ready, on the main loop. Setting it
         # here instead left a window where a global hotkey could start a
         # recording that _on_model_ready then reset to "idle" underneath.
-        self._ui(self._on_model_ready, device)
+        self._ui(self._on_model_ready, device, mode)
 
-    def _on_model_ready(self, device):
+    def _on_model_ready(self, device, mode="best", failed_switch=None):
         """Enable the UI once the model is loaded.
 
         Args:
             device (str): Device label returned by ``Transcriber.load``.
+            mode (str): The ``SPEECH_MODELS`` key that loaded.
+            failed_switch (str): Why a switch did not happen, when ``mode``
+                is the model that was reloaded in its place.
         """
         self.model_ready = True
+        self._speech_model_loaded = mode
+        self.speech_var.set(SPEECH_LABELS[mode])
+        self.speech_btn.configure(state="normal")
+        if failed_switch:
+            self._save_settings()
         hint = (f"{HOTKEY_RECORD.title()}: record anywhere · "
                 f"{HOTKEY_MINI.title()}: mini · "
                 if self.hotkeys.available else "")
@@ -508,7 +605,9 @@ class SpeechToTextApp(ctk.CTk):
             text=f"{hint}Whisper {self.transcriber.model_name} · {device}")
         self.record_btn.configure(state="normal")
         self._set_app_state("idle")
-        if self.transcriber.gpu_error:
+        if failed_switch:
+            self._set_status(failed_switch)
+        elif self.transcriber.gpu_error:
             self._set_status(
                 "Ready - but running on CPU! GPU failed: "
                 f"{self.transcriber.gpu_error[:80]}")

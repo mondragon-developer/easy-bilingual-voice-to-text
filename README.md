@@ -369,6 +369,7 @@ long for exactly the same words. See the measurements in
 | Auto-copy after dictation | Checkbox in the bottom bar (on by default) |
 | Always paste in English | Tick **Always copy English** (off by default; needs Translate on) |
 | Tidy what you said | **Tidy speech: Off / Rules / Rules + grammar** in the bottom bar. *Rules* (default): stuttered words and phrases said once, fillers removed, and the English slips with one right answer corrected ("you was", "he don't", "a apple", "more better"). *Rules + grammar*: the same, then an offline grammar model for English (about 710 MB, downloaded once on first use; adds under a second per recording on CPU). *Off*: every word as spoken |
+| Free the GPU for something else | **Speech model: Best / Light / CPU only** in the bottom bar, no restart. *Best* (default): `large-v3` on the GPU, about 4.2 GB of video memory. *Light*: `large-v3-turbo` in int8 on the GPU, about 1.4 GB, still bilingual (1.5 GB download on first use). *CPU only*: `small` on the processor, slower, and the GPU is left alone. The phone front end's server, if running, switches with it |
 | Keep your choices | Automatic - they are saved as you change them |
 | Translation mode | **Translate: Off / Offline / Online** in the bottom bar. *Offline* (default) translates on your computer; *Online* asks Google first and falls back to MyMemory, then to the offline model; *Off* translates nothing |
 
@@ -482,7 +483,21 @@ same models.
 
 ## Choosing a model
 
-The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs, `small` (fast) on CPU. Override with the `STT_MODEL` environment variable:
+The app picks automatically: `large-v3` (best accuracy) on NVIDIA GPUs, `small` (fast) on CPU. The **Speech model** switch in the bottom
+bar changes that while the app runs:
+
+| Switch | Model | Runs on | Video memory | 8 s clip, RTX 5090 Laptop |
+|---|---|---|---|---|
+| Best | `large-v3`, float16 | GPU | ~4.2 GB | 0.11 s |
+| Light | `large-v3-turbo`, int8 | GPU | ~1.4 GB | 0.11 s |
+| CPU only | `small`, int8 | CPU | none | 1.2 s |
+
+Without a usable GPU, Best and Light fall back to CPU only, as the app always has. Switching to CPU only after a GPU model leaves about
+300 MB on the card: the CUDA context, which only goes when the app closes. Start the app on CPU only (it remembers) and it never takes any.
+The switch is refused while a recording is open or being transcribed, and a switch that fails (a download cut off, say) puts the previous
+model back.
+
+Override with the `STT_MODEL` environment variable, which then wins over the switch on either device:
 `tiny`, `base`, `small`, `medium`, `large-v2`, `large-v3`, `large-v3-turbo`, or `tiny.en` / `base.en` / `small.en` / `medium.en` for
 English only. Anything else is ignored and the default is used. The `distil-*` models are deliberately not accepted: they are English-only
 without saying so, and would turn Spanish into English-shaped nonsense.

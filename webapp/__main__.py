@@ -5,6 +5,9 @@ from pathlib import Path
 
 import uvicorn
 
+from src.settings import Settings
+from src.webpeer import WEB_PORT
+
 from .guard import load_env
 from .server import create_app
 
@@ -13,7 +16,7 @@ from .server import create_app
 #: makes any remote request sign in. Binding wider than this would put the
 #: microphone endpoint on the LAN with only the password in the way.
 HOST = "127.0.0.1"
-PORT = int(os.environ.get("STT_WEB_PORT", "8765"))
+PORT = WEB_PORT
 
 #: Remote credentials come from the environment, or from a ``.env`` in the
 #: project folder (gitignored) so a log-on launcher need not know them.
@@ -28,7 +31,11 @@ if __name__ == "__main__":
     env = load_env(ENV_FILE)
     app = create_app(remote_user=_setting("STT_REMOTE_USER", env),
                      remote_password=_setting("STT_REMOTE_PASSWORD", env),
-                     remote_users=_setting("STT_REMOTE_USERS", env))
+                     remote_users=_setting("STT_REMOTE_USERS", env),
+                     # The desktop window's last choice, so a server started
+                     # at log on does not put large-v3 back on a GPU the
+                     # window was told to free.
+                     speech_model=Settings().load()["speech_model"])
     print("Remote access:",
           "enabled (sign-in required)" if app.state.remote_enabled
           else "off (STT_REMOTE_USER / STT_REMOTE_PASSWORD not set)",

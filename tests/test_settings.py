@@ -27,10 +27,11 @@ class TestLoading:
 
     def test_saved_values_come_back(self, store):
         store.save({"autocopy": False, "translate_mode": "online",
-                    "always_copy_english": True, "tidy_mode": "full"})
+                    "always_copy_english": True, "tidy_mode": "full",
+                    "speech_model": "light"})
         assert store.load() == {"autocopy": False, "translate_mode": "online",
                                 "always_copy_english": True,
-                                "tidy_mode": "full"}
+                                "tidy_mode": "full", "speech_model": "light"}
 
     def test_a_missing_key_falls_back_to_its_default(self, store):
         store.path.write_text(json.dumps({"autocopy": False}), encoding="utf-8")
@@ -47,6 +48,16 @@ class TestLoading:
         a drift would silently reset a valid saved mode to the default."""
         from src.translator import MODES
         assert CHOICES["translate_mode"] == MODES
+
+    def test_the_speech_models_are_the_transcribers_modes(self):
+        from src.transcriber import DEFAULT_MODE, MODES
+        assert CHOICES["speech_model"] == tuple(MODES)
+        assert DEFAULTS["speech_model"] == DEFAULT_MODE
+
+    def test_an_unknown_speech_model_falls_back(self, store):
+        store.path.write_text(json.dumps({"speech_model": "huge"}),
+                              encoding="utf-8")
+        assert store.load()["speech_model"] == "best"
 
     @pytest.mark.parametrize("mode", CHOICES["translate_mode"])
     def test_every_mode_round_trips(self, store, mode):

@@ -8,7 +8,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from src.transcriber import Transcriber, _add_nvidia_dll_dirs
+from src.transcriber import (ModelNotLoaded, Transcriber,
+                             _add_nvidia_dll_dirs)
 
 
 def _fake_pipeline(segment_texts, language, probability=0.97, duration=5.0):
@@ -162,13 +163,17 @@ def _fake_faster_whisper(cuda_failure=None, cpu_failure=None,
 class TestLoadFallback:
     CUBLAS = "Library cublas64_12.dll is not found or cannot be loaded"
 
-    def _load(self, module, platform="win32"):
+    def _load(self, module, platform="win32", mode="best", tr=None,
+              gpus=1):
+        # The device count is faked too: CI runners have no GPU, and the
+        # real query would send every GPU test down the no-device path.
         with patch.dict(sys.modules, {"faster_whisper": module}), \
                 patch("src.transcriber._add_nvidia_dll_dirs"), \
+                patch("src.transcriber._cuda_devices", return_value=gpus), \
                 patch("src.transcriber.sys") as fake_sys:
             fake_sys.platform = platform
-            tr = Transcriber()
-            label = tr.load()
+            tr = tr or Transcriber()
+            label = tr.load(mode)
         return tr, label
 
     def test_gpu_that_cannot_compute_falls_back_to_cpu(self):
@@ -234,3 +239,108 @@ class TestLoadFallback:
                                       cpu_failure="model download interrupted")
         with pytest.raises(RuntimeError, match="download interrupted"):
             self._load(module)
+
+
+class TestSpeechModelModes:
+    """The UI switch: Best, Light and CPU only, swapped without a restart."""
+
+    CUBLAS = TestLoadFallback.CUBLAS
+    _load = TestLoadFallback._load
+
+    def test_light_is_turbo_in_int8_on_the_gpu(self):
+        tr, label = self._load(_fake_faster_whisper(), mode="light")
+        assert tr.model_name == "large-v3-turbo"
+        assert tr.model.device == "cuda"
+        assert tr.model.compute_type == "int8_float16"
+        assert label == "GPU (CUDA, int8_float16)"
+        assert tr.mode == "light"
+        assert tr.batch_size < 16
+
+    def test_cpu_only_never_touches_cuda(self):
+        calls = []
+        module = _fake_faster_whisper()
+        original = module.WhisperModel
+
+        def counting(name, device, compute_type, local_files_only=False):
+            calls.append(device)
+            return original(name, device, compute_type, local_files_only)
+        module.WhisperModel = counting
+        tr, label = self._load(module, mode="cpu")
+        assert calls == ["cpu"]
+        assert label == "CPU (int8)"
+        assert tr.gpu_error is None, "choosing the CPU is not a GPU failure"
+
+    def test_light_falls_back_to_cpu_like_best(self):
+        tr, label = self._load(_fake_faster_whisper(cuda_failure=self.CUBLAS),
+                               mode="light")
+        assert label == "CPU (int8)"
+        assert tr.mode == "cpu"
+        assert self.CUBLAS in tr.gpu_error
+
+    def test_no_cuda_device_means_no_gpu_download(self):
+        """WhisperModel fetches the weights before it meets the device, so
+        on a PC with no NVIDIA card the GPU model must not be built at all:
+        Light would otherwise download 1.5 GB to discard."""
+        built = []
+        module = _fake_faster_whisper()
+        original = module.WhisperModel
+
+        def counting(name, device, compute_type, local_files_only=False):
+            built.append(name)
+            return original(name, device, compute_type, local_files_only)
+        module.WhisperModel = counting
+        tr, label = self._load(module, mode="light", gpus=0)
+        assert built == ["small"]
+        assert label == "CPU (int8)"
+        assert "no CUDA" in tr.gpu_error
+
+    def test_a_failed_device_query_still_tries_the_gpu(self):
+        from src.transcriber import _cuda_devices
+        with patch.dict(sys.modules, {"ctranslate2": None}):
+            assert _cuda_devices() == 1
+
+    def test_an_unknown_mode_means_best(self):
+        tr, _ = self._load(_fake_faster_whisper(), mode="huge")
+        assert tr.model_name == "large-v3"
+
+    def test_the_env_override_still_wins(self, monkeypatch):
+        monkeypatch.setenv("STT_MODEL", "medium")
+        tr, _ = self._load(_fake_faster_whisper(), mode="light")
+        assert tr.model_name == "medium"
+        assert tr.model.compute_type == "int8_float16"
+
+    def test_a_swap_releases_the_old_model_first(self):
+        """Two models on the GPU at once is exactly what the switch exists
+        to avoid, so the old one goes before the new one is built."""
+        released = []
+        module = _fake_faster_whisper()
+        original = module.WhisperModel
+
+        def tracked(name, device, compute_type, local_files_only=False):
+            model = original(name, device, compute_type, local_files_only)
+            model.model = SimpleNamespace(
+                unload_model=lambda: released.append(name))
+            assert released or name == "large-v3", "built before release"
+            return model
+        module.WhisperModel = tracked
+        tr, _ = self._load(module, mode="best")
+        self._load(module, mode="light", tr=tr)
+        assert released == ["large-v3"]
+        assert tr.model_name == "large-v3-turbo"
+
+    def test_unload_is_safe_to_repeat(self):
+        tr, _ = self._load(_fake_faster_whisper())
+        tr.unload()
+        tr.unload()
+        assert tr.model is None and tr.pipeline is None and tr.mode is None
+
+    def test_transcribing_with_no_model_is_refused_plainly(self):
+        with pytest.raises(ModelNotLoaded):
+            Transcriber().transcribe(np.zeros(16000, dtype=np.float32))
+
+    def test_the_batch_size_follows_the_mode(self):
+        tr = Transcriber()
+        tr.pipeline = _fake_pipeline(["Hi."], "en")
+        tr.batch_size = 4
+        tr.transcribe(np.zeros(16000, dtype=np.float32))
+        assert tr.pipeline.transcribe.call_args.kwargs["batch_size"] == 4

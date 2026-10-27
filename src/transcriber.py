@@ -5,9 +5,11 @@ to CPU (int8) automatically. Whisper's output is already punctuated and
 correctly spelled, which is what gives the app its precision.
 """
 
+import gc
 import os
 import re
 import sys
+import threading
 import warnings
 
 from .languages import normalise
@@ -26,6 +28,18 @@ if sys.platform == "darwin":
 MODEL_NAME = "large-v3"
 #: Model used on CPU-only machines (good accuracy, stays fast without a GPU).
 CPU_MODEL_NAME = "small"
+#: The speech-model choices the UI offers, as (model, device, compute type,
+#: batch size). "light" is there to give the GPU back to something else
+#: without giving up Spanish: turbo is multilingual, int8 weights take about
+#: a quarter of large-v3's float16, and a smaller batch keeps the decode
+#: buffers down too. "cpu" frees the GPU entirely.
+MODES = {
+    "best": (MODEL_NAME, "cuda", "float16", 16),
+    "light": ("large-v3-turbo", "cuda", "int8_float16", 4),
+    "cpu": (CPU_MODEL_NAME, "cpu", "int8", 16),
+}
+DEFAULT_MODE = "best"
+
 #: Values accepted from the STT_MODEL environment variable. Restricting to
 #: known Whisper names prevents the env var from pointing the downloader at
 #: an arbitrary HuggingFace repo.
@@ -74,6 +88,22 @@ def _add_nvidia_dll_dirs():
         return
 
 
+def _cuda_devices() -> int:
+    """How many CUDA devices CTranslate2 can see; 1 when it cannot say.
+
+    Asked before any GPU model is built because WhisperModel downloads the
+    weights first and only then finds out there is no GPU: on a PC without
+    an NVIDIA card, choosing Light would fetch 1.5 GB to throw away. "Cannot
+    say" keeps the old behaviour of trying, so a broken query never costs a
+    working GPU.
+    """
+    try:
+        import ctranslate2
+        return ctranslate2.get_cuda_device_count()
+    except Exception:
+        return 1
+
+
 def _open_model(WhisperModel, name, device, compute_type):
     """Build a WhisperModel from the local cache, downloading only on a miss.
 
@@ -95,29 +125,57 @@ def _open_model(WhisperModel, name, device, compute_type):
         return WhisperModel(name, device=device, compute_type=compute_type)
 
 
+class ModelNotLoaded(RuntimeError):
+    """A transcription asked for while no model is loaded: mid-swap, or
+    after a swap that failed outright."""
+
+
 class Transcriber:
-    """Thin wrapper around a lazily loaded faster-whisper model."""
+    """Thin wrapper around a lazily loaded faster-whisper model.
+
+    ``load``, ``unload`` and ``transcribe`` share one lock, so a model swap
+    asked for mid-dictation waits for that dictation to finish instead of
+    freeing the model out from under it.
+    """
 
     def __init__(self):
         self.model = None
         self.pipeline = None
         self.model_name = None
         self.device_label = None
+        self.mode = None        # the MODES key that actually loaded
+        self.batch_size = MODES[DEFAULT_MODE][3]
         self.gpu_error = None  # why the GPU load failed, if it did
+        self._lock = threading.RLock()
 
-    def load(self) -> str:
-        """Load the Whisper model, preferring the GPU.
+    def load(self, mode=DEFAULT_MODE) -> str:
+        """Load the Whisper model for ``mode``, replacing any loaded one.
 
-        Tries ``large-v3`` on CUDA first; if no usable GPU is present, falls
-        back to the lighter ``small`` model on CPU so the app stays responsive
-        on any machine. macOS goes straight to CPU, since CUDA cannot exist
-        there and merely asking for it would download the large model first.
-        Set the ``STT_MODEL`` environment variable to force a specific model
-        on either device.
+        ``"best"`` and ``"light"`` try the GPU and fall back to the
+        ``small`` model on CPU when no usable GPU is present, so the app
+        stays responsive on any machine; ``"cpu"`` goes there directly.
+        macOS always goes straight to CPU, since CUDA cannot exist there and
+        merely asking for it would download the large model first. Set the
+        ``STT_MODEL`` environment variable to force a specific model on
+        either device.
+
+        The old model is released before the new one loads, so a swap never
+        holds two models in GPU memory at once.
+
+        Args:
+            mode: A key of ``MODES``. An unknown value means the default.
 
         Returns:
             str: Human-readable device label, e.g. ``"GPU (CUDA, float16)"``.
         """
+        if mode not in MODES:
+            mode = DEFAULT_MODE
+        with self._lock:
+            self.unload()
+            self._load(mode)
+        return self.device_label
+
+    def _load(self, mode):
         _add_nvidia_dll_dirs()
         import numpy as np
         from faster_whisper import BatchedInferencePipeline, WhisperModel
@@ -125,6 +183,8 @@ class Transcriber:
         override = os.environ.get("STT_MODEL")
         if override and override not in ALLOWED_MODELS:
             override = None  # unknown value: ignore and use the defaults
+        name, device, compute_type, batch_size = MODES[mode]
+        self.gpu_error = None
         # macOS never has CUDA, and WhisperModel downloads the weights before
         # it initialises the device - so attempting the GPU path there would
         # fetch all 3 GB of large-v3 only to discard it when the CUDA init
@@ -132,11 +192,17 @@ class Transcriber:
         # model alone. This is expected on a Mac, not a failure, so leave
         # gpu_error unset: the UI reserves that for a GPU that should have
         # worked and did not.
-        if sys.platform != "darwin":
+        try_gpu = device == "cuda" and sys.platform != "darwin"
+        if try_gpu and _cuda_devices() == 0:
+            # Still reported, as a failed CUDA load always was: on a PC that
+            # does have an NVIDIA card, a missing driver looks exactly like
+            # this, and the status bar is where its owner finds out.
+            self.gpu_error = "no CUDA-capable GPU was found"
+        elif try_gpu:
             try:
-                self.model_name = override or MODEL_NAME
+                self.model_name = override or name
                 self.model = _open_model(WhisperModel, self.model_name,
-                                         "cuda", "float16")
+                                         device, compute_type)
                 # The warm-up has to sit inside this try. Constructing the
                 # CUDA model only needs the driver; cuBLAS is loaded at the
                 # first matmul. On a PC with an NVIDIA driver but no CUDA
@@ -145,22 +211,45 @@ class Transcriber:
                 # cublas64_12.dll is not found". Running one pass here turns
                 # that into the CPU fallback it should have been.
                 self._warm_up(np)
-                self.device_label = "GPU (CUDA, float16)"
+                self.device_label = f"GPU (CUDA, {compute_type})"
+                self.mode = mode
+                self.batch_size = batch_size
             except Exception as exc:
                 self.gpu_error = str(exc)
                 self.model = None
 
         if self.model is None:
-            self.model_name = override or CPU_MODEL_NAME
+            cpu_name, _, cpu_compute, cpu_batch = MODES["cpu"]
+            self.model_name = override or cpu_name
             self.model = _open_model(WhisperModel, self.model_name,
-                                     "cpu", "int8")
-            self.device_label = "CPU (int8)"
+                                     "cpu", cpu_compute)
+            self.device_label = f"CPU ({cpu_compute})"
             self._warm_up(np)
+            self.mode = "cpu"
+            self.batch_size = cpu_batch
 
         # Batched pipeline decodes VAD-split chunks in parallel - much faster
         # than sequential decoding, especially for longer dictations.
         self.pipeline = BatchedInferencePipeline(model=self.model)
-        return self.device_label
+
+    def unload(self):
+        """Release the model and the GPU memory it holds. Safe to repeat.
+
+        CTranslate2 frees device memory when its model object goes away, but
+        anything still referencing it (a traceback, the pipeline) would keep
+        it alive, so the weights are unloaded explicitly first.
+        """
+        with self._lock:
+            engine = getattr(self.model, "model", None)
+            if engine is not None and hasattr(engine, "unload_model"):
+                try:
+                    engine.unload_model()
+                except Exception:
+                    pass  # dropping the references below still frees it
+            self.pipeline = None
+            self.model = None
+            self.mode = None
+            gc.collect()
 
     def _warm_up(self, np):
         """Run one pass over a second of silence.
@@ -192,13 +281,18 @@ class Transcriber:
                 - probability (float): confidence of the language detection;
                 - duration (float): seconds of speech that were transcribed.
         """
-        segments, info = self.pipeline.transcribe(
-            audio,
-            beam_size=5,        # wider beam = more accurate decoding
-            batch_size=16,      # decode up to 16 VAD chunks concurrently
-        )
-        # Iterating the generator is what actually runs the transcription.
-        text = " ".join(seg.text.strip() for seg in segments)
+        with self._lock:
+            if self.pipeline is None:
+                raise ModelNotLoaded("the speech model is not loaded "
+                                     "(switching models?)")
+            segments, info = self.pipeline.transcribe(
+                audio,
+                beam_size=5,        # wider beam = more accurate decoding
+                batch_size=self.batch_size,  # VAD chunks decoded at once
+            )
+            # Iterating the generator is what actually runs the
+            # transcription, so it has to stay under the lock too.
+            text = " ".join(seg.text.strip() for seg in segments)
         text = re.sub(r"\s+", " ", text).strip()
         lang = normalise(info.language)
         return text, lang, info.language_probability, info.duration
