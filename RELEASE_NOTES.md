@@ -1,3 +1,20 @@
+## Speech to Text v2.4.1 - the switch on the phone too
+
+**New in this release:** the phone front end's page has the same **Speech
+model** choice as the desktop window - Best, Light or CPU only. It shows
+which model the computer has loaded and changes the server's copy, which is
+the one on the card when the desktop window is closed. Like the desktop
+switch, it waits while you are recording or a recording is being
+transcribed.
+
+From another device only the main account (`STT_REMOTE_USER`) can use it.
+A guest account still dictates, but sees the choice greyed out: what the
+computer runs is the owner's call. On the computer itself it always works.
+
+The desktop app is unchanged from v2.4.0.
+
+---
+
 ## Speech to Text v2.4.0 - give the graphics card back
 
 Dictate in **English or Spanish**, get both languages side by side, with
