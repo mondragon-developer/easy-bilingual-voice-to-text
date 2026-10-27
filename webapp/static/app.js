@@ -16,6 +16,7 @@ const SETTINGS = ["translate_mode", "tidy_mode", "autocopy", "copy_english"];
 let recorder = null;
 let chunks = [];
 let entryNo = 0;
+let pcClipboard = false;
 
 function setStatus(text) {
   $("status").textContent = text;
@@ -59,6 +60,7 @@ async function checkStatus() {
       return;
     }
     const info = await res.json();
+    pcClipboard = info.pc_clipboard === true;
     showSpeechModel(info);
     if (info.error) {
       setStatus("Model failed to load: " + info.error);
@@ -171,7 +173,7 @@ async function send(blob) {
       if (res.status === 503) setTimeout(checkStatus, 1500);
       return;
     }
-    show(await res.json());
+    await show(await res.json());
   } catch (err) {
     setStatus("Failed: " + err.message);
   } finally {
@@ -181,7 +183,7 @@ async function send(blob) {
 
 // --- results --------------------------------------------------------------
 
-function show(result) {
+async function show(result) {
   if (!result.text) {
     setStatus(result.note || "No speech detected.");
     return;
@@ -200,7 +202,9 @@ function show(result) {
   if ($("autocopy").checked) {
     const english = result.lang === "en" ? result.text : result.translation;
     const toCopy = wantsEnglish && english ? english : result.text;
-    copied = copyText(toCopy) ? (toCopy === result.text ? " · copied" : " · English copied") : "";
+    copied = await copyText(toCopy)
+      ? (toCopy === result.text ? " · copied" : " · English copied")
+      : " · not copied, use the Copy button";
   }
   const notes = result.notes && result.notes.length ? " · " + result.notes.join(" · ") : "";
   const engine = result.engine ? " · translated " + result.engine : "";
@@ -219,14 +223,33 @@ function stripStamps(text) {
   return text.split("\n").filter((line) => !/^#\d+ · /.test(line)).join("\n").trim();
 }
 
-function copyText(text) {
+// A browser writes the clipboard only while the page has the focus, and on
+// the PC the focus is usually already in the window being pasted into by
+// the time a transcription is back. So on the PC the server does the copy;
+// elsewhere the browser tries, and a refusal is reported, not hidden.
+async function copyText(text) {
   if (!text) return false;
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(text).catch(() => {});
-    return true;
+  if (pcClipboard) {
+    try {
+      const res = await fetch("/api/clipboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (res.ok) return true;
+    } catch (err) {
+      // Fall through to the browser's own clipboard.
+    }
   }
-  // http://localhost on the PC itself: the clipboard API is still allowed
-  // there, but fall back to the old way just in case.
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (err) {
+      // Usually "Document is not focused"; the old way below fails the
+      // same way then, but costs nothing to try.
+    }
+  }
   const area = document.createElement("textarea");
   area.value = text;
   document.body.appendChild(area);
@@ -245,8 +268,8 @@ $("record").addEventListener("click", () => {
 for (const key of SETTINGS) $(key).addEventListener("change", saveSettings);
 $("speech_model").addEventListener("change", switchSpeechModel);
 for (const btn of document.querySelectorAll("[data-copy]")) {
-  btn.addEventListener("click", () => {
-    if (copyText(stripStamps($("pane-" + btn.dataset.copy).value))) {
+  btn.addEventListener("click", async () => {
+    if (await copyText(stripStamps($("pane-" + btn.dataset.copy).value))) {
       const label = btn.textContent;
       btn.textContent = "Copied";
       setTimeout(() => { btn.textContent = label; }, 1200);

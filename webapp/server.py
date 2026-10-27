@@ -115,9 +115,18 @@ class _SpeechModel(BaseModel):
     mode: str
 
 
+class _Clip(BaseModel):
+    text: str
+
+
+#: Far more than any dictation; a cap so the endpoint cannot be used to
+#: push megabytes onto the clipboard.
+MAX_CLIP_CHARS = 200_000
+
+
 def create_app(transcriber=None, remote_user="", remote_password="",
                remote_users="", decode=_decode,
-               speech_model="best") -> FastAPI:
+               speech_model="best", copy_to_clipboard=None) -> FastAPI:
     """Build the application.
 
     Args:
@@ -131,10 +140,15 @@ def create_app(transcriber=None, remote_user="", remote_password="",
         decode: ``callable(bytes) -> numpy array`` turning an uploaded clip
             into 16 kHz samples; swapped out in tests.
         speech_model: The ``transcriber.MODES`` key to load at start.
+        copy_to_clipboard: ``callable(str) -> bool`` setting this PC's
+            clipboard; ``clipboard.copy`` when omitted, swapped out in
+            tests so they leave the real clipboard alone.
     """
     if transcriber is None:
         from src.transcriber import Transcriber
         transcriber = Transcriber()
+    if copy_to_clipboard is None:
+        from .clipboard import copy as copy_to_clipboard
     if speech_model not in CHOICES["speech_model"]:
         speech_model = "best"
     models = _Models(transcriber, speech_model)
@@ -158,9 +172,12 @@ def create_app(transcriber=None, remote_user="", remote_password="",
     # switching at all.
     owner = remote_user if remote_user and remote_password else None
 
-    def may_switch(request):
+    def is_local(request):
         host = request.client.host if request.client else None
-        if not guard.is_remote(host, request.headers):
+        return not guard.is_remote(host, request.headers)
+
+    def may_switch(request):
+        if is_local(request):
             return True
         return owner is not None and request.state.remote_user == owner
 
@@ -178,7 +195,22 @@ def create_app(transcriber=None, remote_user="", remote_password="",
             "tidy_modes": CHOICES["tidy_mode"],
             "speech_models": CHOICES["speech_model"],
             "can_switch": may_switch(request),
+            "pc_clipboard": is_local(request),
         }
+
+    @app.post("/api/clipboard")
+    def clipboard(clip: _Clip, request: Request):
+        # A phone's copy belongs on the phone, so only a page on this PC
+        # gets the PC's clipboard. The JSON body keeps other web pages from
+        # writing it: cross-origin they would need a preflight this server
+        # never answers.
+        if not is_local(request):
+            raise HTTPException(403, "the PC's clipboard is set from the PC only")
+        if len(clip.text) > MAX_CLIP_CHARS:
+            raise HTTPException(413, "text too long for the clipboard")
+        if not copy_to_clipboard(clip.text):
+            raise HTTPException(503, "could not reach the clipboard")
+        return {"copied": True}
 
     @app.post("/api/speech-model", status_code=202)
     def speech_model_switch(choice: _SpeechModel, request: Request):

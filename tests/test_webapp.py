@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from src.transcriber import ModelNotLoaded
 from src.translator import Translation
-from webapp.server import MAX_UPLOAD_BYTES, create_app
+from webapp.server import MAX_CLIP_CHARS, MAX_UPLOAD_BYTES, create_app
 
 SPEECH = np.ones(16000, dtype=np.float32)
 LOCAL = ("127.0.0.1", 50000)
@@ -370,3 +370,63 @@ class TestSpeechModelSwitch:
             res = _dictate(client)
         assert res.status_code == 503
         assert "switching" in res.json()["detail"]
+
+
+class TestClipboard:
+    """On the PC the server sets the clipboard, because the browser may
+    not once the focus has moved to the window being pasted into."""
+
+    def _app(self, copied, works=True, **kwargs):
+        def fake(text):
+            copied.append(text)
+            return works
+        return create_app(transcriber=_transcriber(), decode=lambda raw: SPEECH,
+                          copy_to_clipboard=fake, **kwargs)
+
+    def test_a_page_on_the_pc_gets_the_pc_clipboard(self):
+        copied = []
+        with TestClient(self._app(copied), client=LOCAL) as client:
+            assert client.get("/api/status").json()["pc_clipboard"] is True
+            res = client.post("/api/clipboard", json={"text": "Hola, ¿qué tal?"})
+        assert res.status_code == 200
+        assert copied == ["Hola, ¿qué tal?"]
+
+    def test_a_signed_in_phone_does_not(self):
+        copied = []
+        app = self._app(copied, remote_user="jmond", remote_password="pw")
+        auth = _basic("jmond", "pw")
+        with TestClient(app, client=REMOTE) as client:
+            assert client.get("/api/status", headers=auth).json()["pc_clipboard"] is False
+            res = client.post("/api/clipboard", json={"text": "x"}, headers=auth)
+        assert res.status_code == 403
+        assert copied == []
+
+    def test_tunnel_traffic_does_not_either(self):
+        copied = []
+        app = self._app(copied, remote_user="jmond", remote_password="pw")
+        with TestClient(app, client=LOCAL) as client:
+            res = client.post("/api/clipboard", json={"text": "x"}, headers={
+                "CF-Connecting-IP": "1.2.3.4", **_basic("jmond", "pw")})
+        assert res.status_code == 403
+        assert copied == []
+
+    def test_a_form_post_is_refused(self):
+        """Another web page could send a form without a preflight."""
+        copied = []
+        with TestClient(self._app(copied), client=LOCAL) as client:
+            res = client.post("/api/clipboard", data={"text": "x"})
+        assert res.status_code == 422
+        assert copied == []
+
+    def test_a_clipboard_that_cannot_be_opened_is_a_503(self):
+        with TestClient(self._app([], works=False), client=LOCAL) as client:
+            res = client.post("/api/clipboard", json={"text": "x"})
+        assert res.status_code == 503
+
+    def test_oversized_text_is_refused(self):
+        copied = []
+        with TestClient(self._app(copied), client=LOCAL) as client:
+            res = client.post("/api/clipboard",
+                              json={"text": "x" * (MAX_CLIP_CHARS + 1)})
+        assert res.status_code == 413
+        assert copied == []
