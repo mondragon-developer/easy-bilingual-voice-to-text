@@ -1,7 +1,39 @@
-## Speech to Text v2.3.0 - it writes what you meant
+## Speech to Text v2.4.0 - give the graphics card back
 
 Dictate in **English or Spanish**, get both languages side by side, with
 everything - including the translation - running on your own computer.
+
+**New in this release: a Speech model switch.** On a PC with an NVIDIA card,
+the app keeps its speech model on the card for as long as it is open, about
+4 GB of the card's memory. That is fine until something else wants the card -
+a game, a video export, another AI tool. The new switch in the bottom bar
+changes the model while the app runs, no restart:
+
+| Switch | Model | Card memory | 8 s of speech |
+|---|---|---|---|
+| **Best** (default) | `large-v3` | about 4.2 GB | 0.11 s |
+| **Light** | `large-v3-turbo` | about 1.4 GB | 0.11 s |
+| **CPU only** | `small` | none | 1.2 s |
+
+Measured on an RTX 5090 Laptop GPU. *Light* still understands Spanish; it is
+a one-time 1.5 GB download the first time you pick it. *CPU only* moves the
+dictation to the processor: slower, a little less careful with Spanish
+accents, and the card is left alone. The switch waits while you are recording
+or a recording is being transcribed, and if a switch fails - a download cut
+off, say - the model you had comes back. Like the other choices, it is
+remembered.
+
+If you run the phone front end, its server holds a second copy of the model.
+The switch tells it to change too, so the memory is really freed. The phone
+itself cannot change the model; that is decided at the computer.
+
+**Fixed:** a Windows PC without an NVIDIA card used to download the 3 GB GPU
+model before finding out it could not use it, and then fetch the CPU one. It
+now checks for a usable card first.
+
+---
+
+## Speech to Text v2.3.0 - it writes what you meant
 
 **New in this release: Tidy speech.** Spoken sentences come with stutters and
 thinking noises, and the app used to write all of them down: "Um, I, I think
