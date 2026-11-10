@@ -5,14 +5,14 @@ customtkinter>=6.0.0
 faster-whisper>=1.1.0
 
 # Microphone capture
-sounddevice>=0.5.0
+sounddevice>=0.5.6
 numpy>=1.24
 
 # EN <-> ES translation. Offline mode runs OPUS-MT models through CTranslate2
 # (already here for Whisper); sentencepiece is their tokeniser. Online mode
 # uses Google's free web endpoint via deep-translator (no API key), and is
 # the only part of the app that sends text anywhere.
-sentencepiece>=0.2.0
+sentencepiece>=0.2.3
 deep-translator>=1.11.4
 requests>=2.32
 
@@ -25,4 +25,4 @@ keyboard>=0.13.5; sys_platform != 'darwin'
 # CUDA runtime libraries for NVIDIA GPU acceleration (Windows/Linux only;
 # harmless on machines without an NVIDIA card - the app falls back to CPU).
 nvidia-cublas-cu12; sys_platform != 'darwin'
-nvidia-cudnn-cu12>=9; sys_platform != 'darwin'
+nvidia-cudnn-cu12>=9.28.1.4; sys_platform != 'darwin'
