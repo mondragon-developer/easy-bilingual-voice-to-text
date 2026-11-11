@@ -34,7 +34,8 @@ def build():
     args = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
             "--windowed", "--name", NAME, "--distpath", DIST,
             "--workpath", WORK / "work", "--specpath", WORK,
-            "--add-data", f"{ROOT / 'assets'}{os.pathsep}assets"]
+            "--add-data", f"{ROOT / 'assets'}{os.pathsep}assets",
+            "--exclude-module", "pytest"]
     for package in ("customtkinter", "faster_whisper", "sounddevice", "pynput"):
         args += ["--collect-all", package]
     if sys.platform == "win32":
@@ -49,7 +50,11 @@ def build():
                     iconset / f"icon_{size}x{size}{suffix}.png")
         run("iconutil", "-c", "icns", iconset, "-o", WORK / "ptt.icns")
         args += ["--icon", WORK / "ptt.icns", "--osx-bundle-identifier",
-                 "com.mondragon.speechtotext.ptt", "--exclude-module", "keyboard"]
+                 "com.mondragon.speechtotext.ptt", "--exclude-module", "keyboard",
+                 # setuptools 83 no longer provides pkg_resources. PyObjC's
+                 # optional test namespace otherwise triggers its legacy
+                 # PyInstaller runtime hook, crashing before our entry point.
+                 "--exclude-module", "pkg_resources"]
     else:
         raise RuntimeError("Build this edition on Windows or macOS")
     run(*args, ROOT / "ptt_release.py")
