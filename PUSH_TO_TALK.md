@@ -9,10 +9,18 @@ F9 and F13 use the same implementation. F9 is physically available on laptop
 keyboards. F13 generally needs an external keyboard, a programmable button
 or a key remapping. There is no difference in transcription or translation.
 
+## Standalone preview downloads
+
+The separate `v2.4.2-ptt.1` preview is built by `release-ptt.yml` on GitHub's
+Windows and Apple Silicon Mac runners. See `PTT_RELEASE_NOTES.md` for install
+instructions, permissions and preview limitations. It does not replace the
+normal v2.4.2 downloads. `ptt_release.py` adds packaged build checks while
+delegating normal operation to this same optional launcher.
+
 ## Install and run from source
 
-This is a **source extension**, not yet included in the published `.exe` or
-`.dmg`. Close any other copy of SpeechToText before testing it (two copies
+The following instructions are for **source installs**. The standalone PTT
+preview includes its own Python. Close any other copy of SpeechToText before testing it (two copies
 can contend for the microphone and clipboard). Use the same Python environment
 that already runs `main.py`. A fresh environment also needs the original
 `requirements.txt`. On Mac, use the Python/Tk setup in the main README.
@@ -133,5 +141,7 @@ Before merging/releasing, do this on both Windows and Mac:
 9. When hardware is available, repeat using `--key F13`, including disconnect
    while held. Confirm the physical device's release semantics separately.
 
-No existing release is replaced by this extension. Packaging into separate
-signed Windows/macOS downloads is a later step after physical validation.
+No existing release is replaced by this extension. Separate preview binaries
+are built and checked automatically; physical validation is still required.
+Windows uses the existing Azure signing configuration; the Mac bundle is
+ad-hoc signed and not notarized, like the existing Mac release.

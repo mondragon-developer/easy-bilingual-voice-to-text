@@ -1,0 +1,124 @@
+name: Release optional push-to-talk preview
+
+on:
+  push:
+    branches: [feature/optional-push-to-talk]
+    paths:
+      - '.github/workflows/release-ptt.yml'
+      - 'scripts/build_ptt.py'
+      - 'ptt_release.py'
+      - 'ptt/**'
+      - 'requirements-ptt-lock.txt'
+      - 'PTT_RELEASE_NOTES.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ptt-preview-release
+  cancel-in-progress: false
+
+env:
+  PTT_TAG: v2.4.2-ptt.1
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version-file: .python-version
+      - run: python -m pip install --require-hashes -r requirements-lock.txt -r requirements-ptt-lock.txt
+      - run: python -m pip install pyinstaller pytest
+      - run: python -m pytest tests/ptt --run-ptt-ui -q
+      - run: python scripts/build_ptt.py build
+      - name: Sign Windows executable
+        if: runner.os == 'Windows'
+        env:
+          SIGNING_ENABLED: ${{ secrets.AZURE_CLIENT_ID != '' }}
+        shell: pwsh
+        run: |
+          if ($env:SIGNING_ENABLED -ne 'true') { throw 'Windows signing credentials are not configured' }
+      - name: Azure Trusted Signing
+        if: runner.os == 'Windows'
+        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://eus.codesigning.azure.net
+          trusted-signing-account-name: mondragon-developer
+          certificate-profile-name: securepass-signing
+          files-folder: dist/ptt/SpeechToTextPTT
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - name: Check packaged UI and real models
+        shell: bash
+        env:
+          STT_MODEL: tiny
+          STT_SELFTEST_STRICT: '1'
+        run: |
+          python - <<'PY'
+          import pathlib, subprocess, sys
+          exe = (pathlib.Path('dist/ptt/SpeechToTextPTT/SpeechToTextPTT.exe')
+                 if sys.platform == 'win32' else
+                 pathlib.Path('dist/ptt/SpeechToTextPTT.app/Contents/MacOS/SpeechToTextPTT'))
+          for argument, logfile in [('--ptt-selftest', 'selftest-ptt.log'), ('--selftest', 'selftest.log')]:
+              result = subprocess.run([str(exe.resolve()), argument], timeout=900)
+              if pathlib.Path(logfile).exists():
+                  print(pathlib.Path(logfile).read_text(encoding='utf-8'))
+              if result.returncode:
+                  raise SystemExit(result.returncode)
+          PY
+      - run: python scripts/build_ptt.py package
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ptt-${{ runner.os }}
+          path: release/ptt/*
+          if-no-files-found: error
+      - name: Preserve build logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ptt-logs-${{ runner.os }}
+          path: selftest*.log
+          if-no-files-found: ignore
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: ptt-Windows
+          path: release/ptt
+          merge-multiple: true
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: ptt-macOS
+          path: release/ptt
+          merge-multiple: true
+      - run: cd release/ptt && sha256sum *.zip *.dmg > checksums.txt
+      - name: Publish preview without replacing stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$PTT_TAG" >/dev/null 2>&1; then
+            echo 'Preview already exists; refusing to replace its assets.' >&2
+            exit 1
+          fi
+          gh release create "$PTT_TAG" release/ptt/* \
+            --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title 'Speech to Text — F9 push-to-talk preview 1' \
+            --notes-file PTT_RELEASE_NOTES.md
