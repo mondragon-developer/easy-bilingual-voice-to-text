@@ -36,6 +36,11 @@ def build():
             "--workpath", WORK / "work", "--specpath", WORK,
             "--add-data", f"{ROOT / 'assets'}{os.pathsep}assets",
             "--exclude-module", "pytest"]
+    # Optional packages on a developer machine are not app dependencies.
+    # Inference and grammar use CTranslate2, not PyTorch/Transformers.
+    for optional in ("torch", "transformers", "tensorflow", "matplotlib",
+                     "pandas", "scipy", "IPython"):
+        args += ["--exclude-module", optional]
     for package in ("customtkinter", "faster_whisper", "sounddevice", "pynput"):
         args += ["--collect-all", package]
     if sys.platform == "win32":
@@ -67,7 +72,7 @@ def build():
         info.update(
             NSMicrophoneUsageDescription="Record your voice for transcription on this Mac.",
             CFBundleDisplayName="Speech to Text PTT",
-            CFBundleShortVersionString=VERSION, CFBundleVersion=VERSION,
+            CFBundleShortVersionString=VERSION, CFBundleVersion="2.4.2.2",
             NSHighResolutionCapable=True, LSMinimumSystemVersion="11.0")
         with plist.open("wb") as file:
             plistlib.dump(info, file)
@@ -82,6 +87,7 @@ def package():
         if not (folder / f"{NAME}.exe").is_file():
             raise RuntimeError("Build the executable first")
         shutil.copy2(ROOT / "PTT_RELEASE_NOTES.md", folder / "READ_ME.md")
+        shutil.copy2(ROOT / "AUTO_PASTE.md", folder / "AUTO_PASTE.md")
         for filename, arguments in (("Use F13.bat", "--key F13"),
                                     ("Spanish F9.bat", "")):
             prefix = "set STT_MODEL=medium\n" if filename.startswith("Spanish") else ""
@@ -111,6 +117,7 @@ def package():
             shutil.copytree(DIST / f"{NAME}.app", staging / f"{NAME}.app", symlinks=True)
             (staging / "Applications").symlink_to("/Applications")
             shutil.copy2(ROOT / "PTT_RELEASE_NOTES.md", staging / "READ_ME.md")
+            shutil.copy2(ROOT / "AUTO_PASTE.md", staging / "AUTO_PASTE.md")
             run("hdiutil", "create", "-volname", f"Speech to Text PTT {VERSION}",
                 "-srcfolder", staging, "-ov", "-format", "UDZO",
                 OUT / f"SpeechToText-PTT-macOS-{arch}.dmg")

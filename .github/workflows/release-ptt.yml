@@ -7,9 +7,12 @@ on:
       - '.github/workflows/release-ptt.yml'
       - 'scripts/build_ptt.py'
       - 'ptt_release.py'
+      - 'push_to_talk.py'
       - 'ptt/**'
+      - 'tests/ptt/**'
       - 'requirements-ptt-lock.txt'
       - 'PTT_RELEASE_NOTES.md'
+      - 'AUTO_PASTE.md'
   workflow_dispatch:
 
 permissions:
@@ -20,7 +23,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PTT_TAG: v2.4.2-ptt.1
+  PTT_TAG: v2.4.2-ptt.2
 
 jobs:
   build:
@@ -120,5 +123,5 @@ jobs:
           fi
           gh release create "$PTT_TAG" release/ptt/* \
             --target "$GITHUB_SHA" --prerelease --latest=false \
-            --title 'Speech to Text — F9 push-to-talk preview 1' \
+            --title 'Speech to Text - F9 English auto-paste preview 2' \
             --notes-file PTT_RELEASE_NOTES.md

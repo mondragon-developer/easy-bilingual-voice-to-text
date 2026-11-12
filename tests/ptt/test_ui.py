@@ -54,7 +54,13 @@ def app(request, tmp_path_factory):
         translator=lambda *a, **kw: Translation("Hello world.", "offline"),
         hotkeys=NullHotkeyManager(), listener_factory=Listener,
         settings=Settings(tmp_path_factory.mktemp("ptt-settings") / "settings.json"),
+        paster=Mock(capture=Mock(return_value="editor")),
         web_peer=Mock())
+    # Keep the test's clipboard private rather than replacing the user's.
+    clipboard = [""]
+    app.clipboard_clear = lambda: clipboard.__setitem__(0, "")
+    app.clipboard_append = lambda text: clipboard.__setitem__(0, clipboard[0] + text)
+    app.clipboard_get = lambda: clipboard[0]
     wait_for(app, lambda: app.model_ready)
     yield app
     app._on_close()
@@ -126,6 +132,96 @@ def test_disabling_stops_hold_and_restores_key(app):
     finish(app)
     app.ptt_enabled.set(True)
     app._ptt_toggle()
+
+
+def test_autopaste_waits_for_english_translation(app):
+    import threading
+    from src.translator import Translation
+    entered, complete = threading.Event(), threading.Event()
+    original = app.translate
+
+    def slow_translation(*args, **kwargs):
+        entered.set()
+        assert complete.wait(3)
+        return Translation("Fresh English only.", "offline")
+
+    app.translate = slow_translation
+    app.paste_english.set(True)
+    app.paster.paste.reset_mock()
+    try:
+        app.ptt_key.feed(True)
+        wait_for(app, lambda: app.recorder.is_recording)
+        app.ptt_key.feed(False)
+        wait_for(app, entered.is_set)
+        app.paster.paste.assert_not_called()
+        complete.set()
+        finish(app)
+        app.paster.paste.assert_called_once_with("editor")
+        assert app.clipboard_get() == "Fresh English only."
+        # A duplicate completion cannot paste again.
+        app._finish("Repeated completion")
+        assert app.paster.paste.call_count == 1
+    finally:
+        complete.set()
+        app.translate = original
+        app.paste_english.set(False)
+
+
+def test_failed_spanish_translation_never_pastes_spanish_or_old_english(app):
+    original = app.translate
+    app.translate = Mock(side_effect=RuntimeError("offline test"))
+    app.paste_english.set(True)
+    app.paster.paste.reset_mock()
+    try:
+        app.ptt_key.feed(True)
+        wait_for(app, lambda: app.recorder.is_recording)
+        app.ptt_key.feed(False)
+        wait_for(app, lambda: not app.recorder.is_recording)
+        finish(app)
+        app.paster.paste.assert_not_called()
+    finally:
+        app.translate = original
+        app.paste_english.set(False)
+
+
+def test_english_paste_works_with_autocopy_and_translation_off(app):
+    original = app.transcriber.transcribe.return_value
+    from src.app import MODE_LABELS
+    app.transcriber.transcribe.return_value = ("New English.", "en", 0.99, 1.0)
+    app.translate_mode_var.set(MODE_LABELS["off"])
+    app.autocopy_var.set(False)
+    app.paste_english.set(True)
+    app.paster.paste.reset_mock()
+    try:
+        app.ptt_key.feed(True)
+        wait_for(app, lambda: app.recorder.is_recording)
+        app.ptt_key.feed(False)
+        wait_for(app, lambda: not app.recorder.is_recording)
+        finish(app)
+        assert app.clipboard_get() == "New English."
+        app.paster.paste.assert_called_once_with("editor")
+        # Manual recordings never auto-paste, even with the option enabled.
+        app.paster.paste.reset_mock()
+        app.toggle_recording()
+        app.toggle_recording()
+        finish(app)
+        app.paster.paste.assert_not_called()
+    finally:
+        app.transcriber.transcribe.return_value = original
+        app.translate_mode_var.set(MODE_LABELS["offline"])
+        app.autocopy_var.set(True)
+        app.paste_english.set(False)
+
+
+def test_disabling_paste_cancels_pending_destination(app):
+    app.paste_english.set(True)
+    app._prepare_paste("editor")
+    app._paste_text = "Do not paste."
+    app.paste_english.set(False)
+    app._paste_toggle()
+    app.paster.paste.reset_mock()
+    app._finish("Cancelled")
+    app.paster.paste.assert_not_called()
 
 
 def test_failure_stops_owned_recording_but_manual_controls_work(app):

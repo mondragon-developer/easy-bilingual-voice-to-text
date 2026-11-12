@@ -20,6 +20,97 @@ copied or pasted.
 > English**](HOW_IT_WORKS.md) explains what it does, the problem it solves, and
 > exactly where your voice goes, with diagrams and no jargon.
 
+## F9: dictate and paste English into the active app
+
+The optional **[v2.4.2-ptt.2 preview](https://github.com/mondragon-developer/easy-bilingual-voice-to-text/releases/tag/v2.4.2-ptt.2)**
+adds hold-to-talk and automatic English paste, including a tested workflow
+inside the VS Code terminal on Windows. Hold F9, speak, release, and wait for
+the English result to appear where you were writing. The app does not press Enter.
+
+### Choose your F9 download
+
+| Computer | Download |
+|---|---|
+| Windows x64 with an NVIDIA GPU | [Windows GPU ZIP](https://github.com/mondragon-developer/easy-bilingual-voice-to-text/releases/download/v2.4.2-ptt.2/SpeechToText-PTT-Windows-GPU.zip), includes CUDA libraries |
+| Windows x64 without an NVIDIA GPU | [Windows CPU ZIP](https://github.com/mondragon-developer/easy-bilingual-voice-to-text/releases/download/v2.4.2-ptt.2/SpeechToText-PTT-Windows-CPU.zip) |
+| Apple Silicon Mac, M-series | [macOS DMG](https://github.com/mondragon-developer/easy-bilingual-voice-to-text/releases/download/v2.4.2-ptt.2/SpeechToText-PTT-macOS-AppleSilicon.dmg), transcription runs on CPU |
+
+No Python installation is required. There is no Intel Mac installer for this
+preview. [SHA-256 checksums](https://github.com/mondragon-developer/easy-bilingual-voice-to-text/releases/download/v2.4.2-ptt.2/checksums.txt)
+accompany the packages. The [regular v2.4.2 edition](https://github.com/mondragon-developer/easy-bilingual-voice-to-text/releases/tag/v2.4.2)
+remains available; it does not include F9 hold-to-talk or automatic paste.
+The older F9 preview, `v2.4.2-ptt.1`, copies text but does not auto-paste.
+
+### Open, check, and dictate
+
+1. Close any older SpeechToText instance. On Windows, extract the whole ZIP
+   and open **SpeechToTextPTT.exe**. On Mac, open the DMG, drag
+   **SpeechToTextPTT** to Applications, and open it.
+2. Wait for the model to load. First use downloads the models.
+3. Leave **Hold F9 to talk** checked. Check **Paste English after release**.
+   For Spanish dictation, set **Translate** to **Offline** or **Online**.
+4. Click the destination text field or terminal input, hold F9, speak, then
+   release. Stay in that field until processing finishes.
+5. Review the inserted English. Submit it yourself when ready.
+
+The paste checkbox applies to the current session and starts off on a normal
+launch. No command line is needed. Auto-copy and Always copy English are
+optional for manual clipboard use; automatic paste copies the fresh English
+result itself. Failed translation never pastes Spanish as a fallback.
+Changing windows while processing cancels pasting and keeps English on the
+clipboard. Manual Record/Stop and timeout stops do not auto-paste.
+
+**F9 without Fn:** on Windows, use the keyboard manufacturer's Fn Lock or
+function-key mode. On Mac, open System Settings > Keyboard > Keyboard
+Shortcuts > Function Keys and enable standard function keys. See
+[Apple's instructions](https://support.apple.com/en-us/102439).
+This changes the whole function row.
+
+**Mac permissions:** allow Microphone and Accessibility for SpeechToTextPTT,
+plus Input Monitoring if requested, then quit and reopen it. The Mac build
+is ad-hoc signed, not Apple notarized. If blocked, use Privacy & Security >
+Open Anyway and reopen the app.
+
+### Terminal troubleshooting: ^V or right-click paste only
+
+In some VS Code PowerShell terminals on Windows, Ctrl+V is forwarded to the
+program inside the terminal instead of pasting the clipboard. To use the
+same direct paste command as the right-click menu:
+
+1. Press **Ctrl+Shift+P** in VS Code.
+2. Open **Preferences: Open Keyboard Shortcuts (JSON)**.
+3. Add the object below at the end of the existing array. Preserve other
+   entries and put a comma after the preceding object.
+4. Save. In Settings, leave **Terminal > Integrated: Send Keybindings To
+   Shell** unchecked, its default.
+5. Click the terminal and try Ctrl+V, then F9 again. No SpeechToText restart
+   is needed for this editor setting.
+
+```json
+{
+  "key": "ctrl+v",
+  "command": "workbench.action.terminal.paste",
+  "when": "terminalFocus"
+}
+```
+
+This adjustment resolved the maintainer's Windows VS Code terminal test.
+It affects only a focused terminal. The app does not change editor settings
+automatically. See [VS Code's PowerShell paste handler](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/contrib/terminalContrib/sendSequence/browser/terminal.sendSequence.contribution.ts)
+and [terminal shortcut routing](https://code.visualstudio.com/docs/terminal/advanced#keyboard-shortcuts-and-the-shell).
+
+If another app ignores the paste shortcut, use its Paste command and check
+its keyboard settings. Windows can block input into an app running as
+administrator. Full help is included in **AUTO_PASTE.md** in every package,
+and [available here](https://github.com/mondragon-developer/easy-bilingual-voice-to-text/blob/v2.4.2-ptt.2/AUTO_PASTE.md).
+
+**Preview validation:** Windows dictation and VS Code terminal paste were
+confirmed on the development build. Automated Windows/macOS checks cover
+recording control, destination guards, UI processing, simulated paste, and
+packaged model loading. Physical recording and paste on Mac, CPU-only
+hardware, Windows Terminal, and Bluetooth buttons still need on-device
+testing. Each F9 hold has a five-minute fallback limit.
+
 ## Features
 
 - 🎙️ **Auto language detection** - speak EN or ES, no switch to flip
@@ -84,7 +175,7 @@ product pages before choosing.
 
 ### Option A: Download (no Python needed)
 
-1. Go to [**Releases**](../../releases) and download the zip that fits your PC:
+1. Go to the [**regular release**](../../releases/latest) and download the zip that fits your PC (for F9, use the downloads above):
    - **`SpeechToText-Windows-GPU.zip`** (~1.5 GB) - for PCs with an NVIDIA GPU (much faster)
    - **`SpeechToText-Windows-CPU.zip`** (~95 MB) - for any Windows PC
 2. Unzip anywhere, open the folder, and run **`SpeechToText.exe`**.
@@ -289,10 +380,10 @@ every Mac and could crash on startup.
   English is identical across all three. On Spanish, `small` writes `Puede manejar... Mondragon.` where `medium` writes `¿Puede manejar... Mondragón?` - it loses the inverted question mark and the accent on a proper noun. If you dictate mostly Spanish and care about that, `STT_MODEL=medium` is worth the extra seconds; otherwise `small` is three times faster for the same English.
 
 - **`large-v3-turbo` is not worth it on CPU.** It is the *slowest* of the three here and no more accurate than `medium`, because it keeps `large-v3`'s full-size encoder and only shrinks the decoder - and on short dictation clips the encoder is the bottleneck. Its speed advantage is a GPU-and-long-audio effect. It also costs 1.5 GB to download.
-- **Global hotkeys** (Ctrl+Alt+R from other apps) are not available on macOS without running as root, so the app skips them entirely there. In-app shortcuts (Ctrl+R / Ctrl+S) still work.
+- **Regular-edition global hotkeys** (Ctrl+Alt+R from other apps) are skipped on macOS. In-app shortcuts (Ctrl+R / Ctrl+S) still work. The separate F9 preview above uses macOS Accessibility permission for hold-to-talk.
 
-A *signed* Mac download (no Gatekeeper warning), an Intel build, working global
-hotkeys, and the rounded mini pill are all still planned.
+An Apple-notarized Mac download, an Intel installer, and the rounded mini pill
+are still planned. Global F9 hold-to-talk is available in the optional preview above.
 
 ## Better Spanish, if you dictate mostly in Spanish
 

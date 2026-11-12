@@ -14,8 +14,9 @@ class HoldKey:
     and enable/disable changes while the physical key is held.
     """
 
-    def __init__(self):
+    def __init__(self, capture_release=None):
         self.events = queue.SimpleQueue()
+        self.capture_release = capture_release
         self._lock = threading.Lock()
         self._enabled = False
         self._down = False
@@ -44,7 +45,14 @@ class HoldKey:
                 return self._claimed
             consumed = self._claimed
             if self._active:
-                self.events.put(("up", self._token))
+                if self.capture_release is None:
+                    self.events.put(("up", self._token))
+                else:
+                    try:
+                        target = self.capture_release()
+                    except Exception:
+                        target = None
+                    self.events.put(("up", self._token, target))
             self._down = self._claimed = self._active = False
             return consumed
 
@@ -61,7 +69,8 @@ class HoldRecording:
     This prevents a late release from stopping a later manual recording.
     """
 
-    def __init__(self, app, key, max_seconds=300, clock=time.monotonic):
+    def __init__(self, app, key, max_seconds=300, clock=time.monotonic,
+                 on_release=None):
         self.app = app
         self.key = key
         self.max_seconds = max_seconds
@@ -69,6 +78,7 @@ class HoldRecording:
         self.owner = None
         self.started = None
         self.last_tick = clock()
+        self.on_release = on_release
 
     def state_changed(self, state):
         if state != "recording":
@@ -95,11 +105,13 @@ class HoldRecording:
         self.last_tick = now
         while True:
             try:
-                action, token = self.key.events.get_nowait()
+                action, token, *context = self.key.events.get_nowait()
             except queue.Empty:
                 break
             if action == "up":
                 if self.owner == token:
+                    if context and self.on_release:
+                        self.on_release(context[0])
                     self.stop()
             elif (self.owner is None and self.key.active(token)
                   and self.app.model_ready and not self.app._processing
@@ -108,7 +120,6 @@ class HoldRecording:
                 if self.app.recorder.is_recording:
                     self.owner = token
                     self.started = self.clock()
-                    # A key may have been released while the mic was opening.
-                    if not self.key.active(token):
-                        self.stop()
+                    # A release during mic startup is already queued. Consume
+                    # it next, including its destination, before stopping.
         return reason

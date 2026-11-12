@@ -107,6 +107,8 @@ def test_dead_listener_is_not_reported_ready(listener):
 
 def test_cli_defaults_and_f13():
     assert options([]).key == "F9"
+    assert not options([]).paste_english
+    assert options(["--paste-english"]).paste_english
     assert options(["--key", "f13"]).key == "F13"
 
 

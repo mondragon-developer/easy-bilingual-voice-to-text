@@ -14,6 +14,7 @@ def run():
         from src.settings import Settings
         from src.translator import Translation
         from .app import PushToTalkApp
+        from .paste import create_paster
 
         assert keyboard.Key.f9.value.vk != keyboard.Key.f13.value.vk
 
@@ -62,11 +63,18 @@ def run():
             raise RuntimeError("Timed out during frozen PTT check")
 
         with tempfile.TemporaryDirectory() as folder:
+            # Import and construct the real platform adapter, then replace
+            # delivery so this check never types into another application.
+            paster = create_paster()
+            pasted = []
+            paster.capture = lambda: "selftest destination"
+            paster.paste = pasted.append
             app = PushToTalkApp(
                 recorder=Recorder(), transcriber=Transcriber(),
                 translator=lambda *a, **kw: Translation("Hello world.", "offline"),
                 hotkeys=NullHotkeyManager(), listener_factory=Listener,
                 settings=Settings(Path(folder) / "settings.json"),
+                paster=paster,
                 web_peer=lambda mode: None)
             wait_for(lambda: app.model_ready)
             app.autocopy_var.set(True)
@@ -79,9 +87,17 @@ def run():
             wait_for(lambda: not app.recorder.is_recording and not app._processing)
             assert app.clipboard_get() == "Hello world."
             assert "Hola mundo." in app._pane_text("es")
+            assert pasted == []  # Auto-paste starts off in a normal launch.
+            app.paste_english.set(True)
+            app.ptt_key.feed(True)
+            wait_for(lambda: app.recorder.is_recording)
+            app.ptt_key.feed(False)
+            wait_for(lambda: not app.recorder.is_recording and not app._processing)
+            assert pasted == ["selftest destination"]
+            assert app.clipboard_get() == "Hello world."
             app._on_close()
             app = None
-        message, code = "PTT SELFTEST OK: native imports, UI, hold/release, English clipboard", 0
+        message, code = "PTT SELFTEST OK: native imports, UI, hold/release, English clipboard, simulated paste", 0
     except Exception as exc:
         message, code = f"PTT SELFTEST FAIL: {type(exc).__name__}: {exc}", 1
     finally:
