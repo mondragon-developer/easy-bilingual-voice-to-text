@@ -11,6 +11,7 @@ on:
       - 'ptt/**'
       - 'tests/ptt/**'
       - 'requirements-ptt-lock.txt'
+      - 'requirements-lock.txt'
       - 'PTT_RELEASE_NOTES.md'
       - 'AUTO_PASTE.md'
   workflow_dispatch:

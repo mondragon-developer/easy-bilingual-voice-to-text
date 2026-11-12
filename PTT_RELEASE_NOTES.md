@@ -106,3 +106,7 @@ The regular v2.4.2 release remains available. This preview has signed Windows
 binaries and SHA-256 checksums. Audio is processed locally; Online translation
 sends transcript text to translation services. Use Offline after downloading
 its models for local translation.
+
+This build also updates certifi to 2026.10.18, filelock to 4.2.1, urllib3 to
+2.8.0, and setuptools to 84.1.0, addressing the dependency advisories found
+during release review. Their downloaded artifacts are hash-pinned.
