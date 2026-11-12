@@ -1,0 +1,31 @@
+name: Optional push-to-talk
+
+on:
+  pull_request:
+    paths:
+      - 'ptt/**'
+      - 'push_to_talk.py'
+      - 'requirements-ptt.txt'
+      - 'tests/ptt/**'
+      - '.github/workflows/push-to-talk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version-file: .python-version
+      # Fake audio/models: no CUDA downloads or real microphone access.
+      - run: python -m pip install pytest customtkinter numpy sounddevice requests deep-translator -r requirements-ptt.txt
+      - run: python -c "from pynput import keyboard; assert keyboard.Key.f9.value.vk != keyboard.Key.f13.value.vk"
+      - run: python -m pytest tests/ptt --run-ptt-ui -q

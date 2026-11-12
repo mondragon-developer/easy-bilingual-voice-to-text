@@ -1,0 +1,3 @@
+# Optional extension only. Install the application's requirements first.
+# macOS pulls in the small PyObjC frameworks used by pynput; no root needed.
+pynput==1.8.1; sys_platform == 'win32' or sys_platform == 'darwin'
